@@ -1,0 +1,6 @@
+{
+  "name": "FURSAD AI - Build Full-Stack Apps with AI",
+  "description": "FURSAD AI - Professional AI-powered full-stack website and web-app builder. Describe your idea and watch FURSAD AI design, structure and launch your website instantly.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

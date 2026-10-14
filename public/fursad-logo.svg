@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="none">
+  <defs>
+    <!-- Blue F Gradient -->
+    <linearGradient id="fursad-blue-main" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0a1d4a" />
+      <stop offset="35%" stop-color="#0e3a94" />
+      <stop offset="70%" stop-color="#1953c8" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+
+    <!-- Blue F Top Bar Highlight -->
+    <linearGradient id="fursad-blue-light" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1443a6" />
+      <stop offset="60%" stop-color="#1e5ad9" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+
+    <!-- Blue Shadow / Bottom Arc -->
+    <linearGradient id="fursad-blue-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#061330" />
+      <stop offset="100%" stop-color="#0d2c6e" />
+    </linearGradient>
+
+    <!-- Golden Rising Figure Gradient -->
+    <linearGradient id="fursad-gold-body" x1="0%" y1="100%" x2="90%" y2="0%">
+      <stop offset="0%" stop-color="#d97706" />
+      <stop offset="25%" stop-color="#f59e0b" />
+      <stop offset="65%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#fde047" />
+    </linearGradient>
+
+    <!-- Golden Head Radial Gradient -->
+    <radialGradient id="fursad-gold-head" cx="38%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="35%" stop-color="#fbbf24" />
+      <stop offset="85%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </radialGradient>
+
+    <!-- Golden Glow Filter for the Star and Arc -->
+    <filter id="fursad-star-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Subtle Drop Shadow for Logo Mark -->
+    <filter id="fursad-subtle-shadow" x="-10%" y="-10%" width="125%" height="125%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0f2b6a" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <g filter="url(#fursad-subtle-shadow)">
+    <!-- 1. Bottom Dark Blue Accent Curve (depth shadow under the F tail) -->
+    <path 
+      d="M135 360 C155 358 190 348 235 320 C205 342 165 358 135 360 Z" 
+      fill="url(#fursad-blue-dark)" 
+    />
+    <path
+      d="M135 360 C180 355 240 325 285 285 C275 305 220 345 135 360 Z"
+      fill="#081b44"
+      opacity="0.9"
+    />
+
+    <!-- 2. Main Blue "F" Silhouette -->
+    <!-- 
+      The F wraps around the golden figure. 
+      Left spine: from (135,360) arching up through (130,220) to (155,120) to (200,90).
+      Top bar: arches to (365,90), rounds down to (365,145), inner curve back to (245,145).
+      Inner notch: dips down to (198,185).
+      Middle bar: extends to (360,232), rounded cap to (360,282), returns to (270,282).
+      Bottom curve of F: curves down to (240,315) joining the sweep.
+    -->
+    <path 
+      d="M135 360
+         C128 300 126 230 138 175
+         C150 120 185 90 230 90
+         L355 90
+         C365 90 372 98 372 108
+         L372 130
+         C372 140 365 146 355 146
+         L245 146
+         C215 146 198 165 198 195
+         L198 215
+         L348 215
+         C358 215 366 223 366 233
+         L366 255
+         C366 265 358 273 348 273
+         L265 273
+         C290 260 320 238 335 210
+         C295 245 245 285 195 315
+         C165 333 145 350 135 360 Z"
+      fill="url(#fursad-blue-main)"
+    />
+
+    <!-- Top Bar Luminous Highlight for 3D metallic feel -->
+    <path
+      d="M230 90 L355 90 C365 90 372 98 372 108 L372 115 C360 102 335 98 280 98 L230 98 C210 98 190 102 175 110 C188 98 208 90 230 90 Z"
+      fill="url(#fursad-blue-light)"
+      opacity="0.65"
+    />
+
+    <!-- 3. Dynamic Golden Rising Figure & Ascending Swoosh -->
+    <!--
+      Swoosh tip at star: (395, 95).
+      Outer ascending arc: curves from (135,360) up along (210,290) -> (280,210) -> (340,150) -> (395,95).
+      Inner edge: curves from (395,95) down to (372,130) -> (340,195) -> (295,245) -> (235,285) -> (135,360).
+      Torso and outstretched left arm: reaches into the inner counter of the F.
+    -->
+    <path
+      d="M135 360
+         C160 350 205 310 240 260
+         C245 250 240 235 225 230
+         C212 225 200 226 192 230
+         C202 220 216 216 232 218
+         C248 220 258 232 268 245
+         C285 220 315 175 355 130
+         C375 108 388 98 395 95
+         C392 108 376 138 355 170
+         C325 215 285 265 245 298
+         C195 338 155 356 135 360 Z"
+      fill="url(#fursad-gold-body)"
+    />
+
+    <!-- Golden Figure Head (Circle in joyous rising pose) -->
+    <circle 
+      cx="275" 
+      cy="190" 
+      r="28" 
+      fill="url(#fursad-gold-head)" 
+    />
+    <!-- Head Soft Inner Highlight -->
+    <circle
+      cx="268"
+      cy="182"
+      r="10"
+      fill="#fffbeb"
+      opacity="0.45"
+    />
+
+    <!-- 4. 3D Faceted Golden Star (Rising Star at Apex) -->
+    <!-- Center: (400, 72). 5 points with light and shadow facets -->
+    <g transform="translate(400, 72) rotate(-8)" filter="url(#fursad-star-glow)">
+      <!-- 
+        5 Tips:
+        Tip 0 (Top): (0, -42)
+        Tip 1 (Right): (39.9, -13)
+        Tip 2 (Bottom Right): (24.7, 34)
+        Tip 3 (Bottom Left): (-24.7, 34)
+        Tip 4 (Left): (-39.9, -13)
+
+        5 Inner Valleys (r = 17):
+        V0 (Top-Right): (10, -13.8)
+        V1 (Bottom-Right): (16.2, 5.3)
+        V2 (Bottom): (0, 17)
+        V3 (Bottom-Left): (-16.2, 5.3)
+        V4 (Top-Left): (-10, -13.8)
+      -->
+      <!-- Facet 0 - Light (Top left of tip 0) -->
+      <polygon points="0,0 0,-42 -10,-13.8" fill="#fef08a" />
+      <!-- Facet 0 - Shadow (Top right of tip 0) -->
+      <polygon points="0,0 0,-42 10,-13.8" fill="#f59e0b" />
+
+      <!-- Facet 1 - Light (Top of tip 1) -->
+      <polygon points="0,0 39.9,-13 10,-13.8" fill="#fde047" />
+      <!-- Facet 1 - Shadow (Bottom of tip 1) -->
+      <polygon points="0,0 39.9,-13 16.2,5.3" fill="#d97706" />
+
+      <!-- Facet 2 - Light (Right of tip 2) -->
+      <polygon points="0,0 24.7,34 16.2,5.3" fill="#fbbf24" />
+      <!-- Facet 2 - Shadow (Left of tip 2) -->
+      <polygon points="0,0 24.7,34 0,17" fill="#b45309" />
+
+      <!-- Facet 3 - Light (Right of tip 3) -->
+      <polygon points="0,0 -24.7,34 0,17" fill="#f59e0b" />
+      <!-- Facet 3 - Shadow (Left of tip 3) -->
+      <polygon points="0,0 -24.7,34 -16.2,5.3" fill="#b45309" />
+
+      <!-- Facet 4 - Light (Bottom of tip 4) -->
+      <polygon points="0,0 -39.9,-13 -16.2,5.3" fill="#fde047" />
+      <!-- Facet 4 - Shadow (Top of tip 4) -->
+      <polygon points="0,0 -39.9,-13 -10,-13.8" fill="#d97706" />
+
+      <!-- Center Sparkle / Gleam -->
+      <circle cx="-2" cy="-3" r="3.5" fill="#ffffff" opacity="0.8" />
+    </g>
+  </g>
+
+  <!-- 5. Wordmark: Fursad (Deep Navy) + Ai (Golden Yellow) -->
+  <g transform="translate(42, 448)">
+    <text 
+      x="0" 
+      y="0" 
+      font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+      font-size="80" 
+      font-weight="900" 
+      letter-spacing="-1.5"
+    >
+      <tspan fill="#0a2569">Fursad </tspan>
+      <tspan fill="url(#fursad-gold-body)">Ai</tspan>
+    </text>
+  </g>
+</svg>

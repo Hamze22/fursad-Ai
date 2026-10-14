@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="none">
+  <defs>
+    <linearGradient id="fav-blue" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0a1d4a" />
+      <stop offset="50%" stop-color="#144cbd" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="fav-gold" x1="0%" y1="100%" x2="90%" y2="0%">
+      <stop offset="0%" stop-color="#d97706" />
+      <stop offset="30%" stop-color="#f59e0b" />
+      <stop offset="70%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#fde047" />
+    </linearGradient>
+    <radialGradient id="fav-head" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="60%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </radialGradient>
+  </defs>
+
+  <!-- Blue "F" Silhouette -->
+  <path 
+    d="M135 375
+       C128 310 126 235 138 175
+       C150 120 185 85 230 85
+       L360 85
+       C370 85 378 93 378 103
+       L378 132
+       C378 142 370 150 360 150
+       L245 150
+       C215 150 198 168 198 198
+       L198 215
+       L350 215
+       C360 215 368 223 368 233
+       L368 258
+       C368 268 360 276 350 276
+       L265 276
+       C290 260 320 238 335 210
+       C295 245 245 285 195 320
+       C165 342 145 362 135 375 Z"
+    fill="url(#fav-blue)"
+  />
+
+  <!-- Golden Rising Swoosh & Torso -->
+  <path
+    d="M135 375
+       C160 360 205 315 240 265
+       C245 255 240 238 225 232
+       C212 227 200 228 192 232
+       C202 222 216 218 232 220
+       C248 222 258 234 268 247
+       C285 222 315 175 355 128
+       C375 106 388 95 398 90
+       C394 105 378 138 355 172
+       C325 218 285 270 245 305
+       C195 348 155 370 135 375 Z"
+    fill="url(#fav-gold)"
+  />
+
+  <!-- Golden Head -->
+  <circle cx="275" cy="192" r="30" fill="url(#fav-head)" />
+
+  <!-- 3D Faceted Golden Star -->
+  <g transform="translate(402, 68) rotate(-8)">
+    <polygon points="0,0 0,-44 -11,-14.5" fill="#fef08a" />
+    <polygon points="0,0 0,-44 11,-14.5" fill="#f59e0b" />
+    <polygon points="0,0 41.8,-13.6 11,-14.5" fill="#fde047" />
+    <polygon points="0,0 41.8,-13.6 17,5.5" fill="#d97706" />
+    <polygon points="0,0 25.8,35.6 17,5.5" fill="#fbbf24" />
+    <polygon points="0,0 25.8,35.6 0,17.8" fill="#b45309" />
+    <polygon points="0,0 -25.8,35.6 0,17.8" fill="#f59e0b" />
+    <polygon points="0,0 -25.8,35.6 -17,5.5" fill="#b45309" />
+    <polygon points="0,0 -41.8,-13.6 -17,5.5" fill="#fde047" />
+    <polygon points="0,0 -41.8,-13.6 -11,-14.5" fill="#d97706" />
+  </g>
+</svg>
