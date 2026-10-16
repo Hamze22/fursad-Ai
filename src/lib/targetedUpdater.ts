@@ -10,7 +10,8 @@ export function applyClientTargetedPatch(
   currentHtml: string,
   currentFiles: Record<string, string>,
   prompt: string,
-  language: string = 'so'
+  language: string = 'so',
+  targetedSelector?: string
 ): {
   updatedFiles: Record<string, string>;
   changeRecord: ChangeRecord;

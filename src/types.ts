@@ -96,6 +96,7 @@ export interface ProjectState {
   databaseTables?: DbTable[];
   changeHistory?: ChangeRecord[];
   aiConfig?: AIProviderConfig;
+  customInstructions?: string;
 }
 
 export type AppView = 'landing' | 'auth' | 'dashboard' | 'builder' | 'course' | 'billing' | 'settings' | 'projects' | 'templates' | 'deployments';

@@ -24,10 +24,13 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
   const isSo = language === 'so';
 
   const htmlContent = useMemo(() => {
-    const appJs = files['/App.js'] || files['App.js'] || '';
+    const htmlKey = Object.keys(files).find(p => p.toLowerCase().endsWith('.html'));
+    if (htmlKey && files[htmlKey]) {
+      return files[htmlKey];
+    }
+
+    const appJs = files['/App.js'] || files['App.js'] || files['src/App.tsx'] || '';
     const stylesCss = files['/styles.css'] || files['styles.css'] || '';
-    
-    // Simple regex to remove imports from App.js for the preview
     const cleanAppJs = appJs.replace(/import.*?;/g, '');
 
     return `
@@ -45,7 +48,6 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
       <body>
         <div id="root"></div>
         <script>
-          // Minimal mock React-like behavior
           document.getElementById('root').innerHTML = \`${cleanAppJs}\`;
         </script>
       </body>

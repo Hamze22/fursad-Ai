@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Sparkles,
   ArrowRight,
+  ArrowLeft,
   Code2,
   Terminal,
   HelpCircle,
@@ -298,14 +299,14 @@ export function CartWidget() {
       {/* Top Banner & Navigation */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
         <div className="flex items-center gap-3">
-          {onBack && (
-            <button 
-              onClick={onBack}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white transition-all flex items-center gap-2 active:scale-95"
-            >
-              <span>← {isSo ? 'Ku noqo Hoyga' : 'Back to Home'}</span>
-            </button>
-          )}
+          <button 
+            onClick={onBack || (() => window.history.back())}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 border border-slate-700 text-xs font-bold text-white transition-all flex items-center gap-2 active:scale-95 shadow-md shadow-black/40 group cursor-pointer"
+            title="Ku noqo Hoyga ama Landing-ka / Back to Home"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-cyan-400 group-hover:-translate-x-0.5 transition-transform" />
+            <span>{isSo ? '← Ku noqo Hoyga (Home)' : '← Back to Home / Landing'}</span>
+          </button>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-950/60 border border-blue-500/30 text-blue-300 text-xs font-bold">
             <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
             <span>FURSAD AI ACADEMY</span>

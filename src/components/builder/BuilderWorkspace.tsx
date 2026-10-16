@@ -56,7 +56,10 @@ import {
   MousePointer,
   Pencil,
   Trash2,
-  Wand2
+  Wand2,
+  Sun,
+  Moon,
+  Settings
 } from 'lucide-react';
 import { ProjectState, User, AppView, AIProviderConfig, ChangeRecord } from '../../types.ts';
 import { exportProjectZip, applyOperations } from '../../lib/projectUtils.ts';
@@ -68,6 +71,10 @@ import { ChangeRecordCard } from './ChangeRecordCard.tsx';
 import { ProjectHistoryModal } from './ProjectHistoryModal.tsx';
 import { AiProviderSettings } from '../dashboard/AiProviderSettings.tsx';
 import { applyClientTargetedPatch } from '../../lib/targetedUpdater.ts';
+import { GitHubModal } from '../integrations/GitHubModal.tsx';
+import { VercelDeployModal } from '../deploy/VercelDeployModal.tsx';
+import { DatabaseManager } from '../database/DatabaseManager.tsx';
+import { ChatSettingsDrawer, DrawerTab } from './ChatSettingsDrawer.tsx';
 
 const HexagonIcon = ({ className = "w-5 h-5 text-slate-900" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -85,6 +92,8 @@ interface BuilderWorkspaceProps {
   onNavigateView?: (view: AppView) => void;
   onLogout?: () => void;
   onSelectProject?: (p: ProjectState) => void;
+  theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
 export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({ 
@@ -96,11 +105,30 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
   projects = [],
   onNavigateView = () => {},
   onLogout = () => {},
-  onSelectProject
+  onSelectProject,
+  theme = 'dark',
+  onToggleTheme
 }) => {
+  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>(() => {
+    return theme || (localStorage.getItem('fursad_ai_theme') as 'light' | 'dark') || 'dark';
+  });
+
+  useEffect(() => {
+    if (theme) setCurrentTheme(theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const next = currentTheme === 'dark' ? 'light' : 'dark';
+    setCurrentTheme(next);
+    try {
+      localStorage.setItem('fursad_ai_theme', next);
+    } catch {}
+    if (onToggleTheme) onToggleTheme();
+  };
+
   const [chatInput, setChatInput] = useState('');
   const [activeSidebarTab, setActiveSidebarTab] = useState<'chat' | 'files'>('chat');
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'split'>('preview');
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'database' | 'split'>('preview');
   const [mobileTab, setMobileTab] = useState<'chat' | 'preview' | 'artifacts' | 'side-by-side'>('side-by-side');
   const [sideDrawerOpen, setSideDrawerOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<'Gemini 2.5 Flash' | 'Gemini 3.8 Flash' | 'Gemini 3.1 Pro' | 'Claude 3.7 Sonnet' | 'GPT-4o'>('Gemini 2.5 Flash');
@@ -113,6 +141,11 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
   const [showStylePresets, setShowStylePresets] = useState(false);
   const [showAiGatewayModal, setShowAiGatewayModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showGithubModal, setShowGithubModal] = useState(false);
+  const [showVercelModal, setShowVercelModal] = useState(false);
+  const [showDbModal, setShowDbModal] = useState(false);
+  const [showChatSettingsDrawer, setShowChatSettingsDrawer] = useState(false);
+  const [chatSettingsTab, setChatSettingsTab] = useState<DrawerTab>('settings');
 
   // Active AI Provider Configuration
   const [aiConfig, setAiConfig] = useState<AIProviderConfig>(() => {
@@ -149,25 +182,28 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
   const [sidebarWidth, setSidebarWidth] = useState<number>(360);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState<boolean>(false);
 
-  // Visual Edit Tool / Element Inspection State
+  // Visual Element Inspection & Direct Edit Tool
   const [isInspectMode, setIsInspectMode] = useState<boolean>(false);
   const [selectedElementInfo, setSelectedElementInfo] = useState<{
     selector: string;
-    tagName: string;
+    tag: string;
+    id: string;
+    className: string;
     textSnippet: string;
-    id?: string;
-    className?: string;
   } | null>(null);
-  const [inlineEditText, setInlineEditText] = useState<string>('');
-  const [showInlineEditModal, setShowInlineEditModal] = useState<boolean>(false);
+  const [inlineEditText, setInlineEditText] = useState('');
+  const [showInlineEditModal, setShowInlineEditModal] = useState(false);
 
-  // Handle sidebar dragging
+  // Handle mouse dragging for resizable border
   useEffect(() => {
     if (!isDraggingSidebar) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.min(Math.max(e.clientX, 260), window.innerWidth - 320);
-      setSidebarWidth(newWidth);
+      // Clamping between 260px and 75% of viewport width
+      const minW = 260;
+      const maxW = Math.max(400, Math.floor(window.innerWidth * 0.72));
+      const targetW = Math.max(minW, Math.min(maxW, e.clientX));
+      setSidebarWidth(targetW);
     };
 
     const handleMouseUp = () => {
@@ -182,23 +218,19 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
     };
   }, [isDraggingSidebar]);
 
-  // Handle element selection from iframe postMessage
+  // Handle messages from inside preview iframe when element is selected in inspect mode
   useEffect(() => {
-    const handleWindowMessage = (e: MessageEvent) => {
-      if (e.data && e.data.type === 'FURSAD_ELEMENT_SELECTED') {
-        setSelectedElementInfo({
-          selector: e.data.selector,
-          tagName: e.data.tagName,
-          textSnippet: e.data.textSnippet,
-          id: e.data.id,
-          className: e.data.className
-        });
-        setInlineEditText(e.data.textSnippet || '');
+    const handleFrameMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'AIS_ELEMENT_SELECTED') {
+        const { selector, tag, id, className, textSnippet } = event.data;
+        setSelectedElementInfo({ selector, tag, id, className, textSnippet });
+        if (textSnippet) {
+          setInlineEditText(textSnippet);
+        }
       }
     };
-
-    window.addEventListener('message', handleWindowMessage);
-    return () => window.removeEventListener('message', handleWindowMessage);
+    window.addEventListener('message', handleFrameMessage);
+    return () => window.removeEventListener('message', handleFrameMessage);
   }, []);
 
   // Character written animation counter during generation
@@ -256,6 +288,7 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
             databaseTables: data.databaseTables && Array.isArray(data.databaseTables) ? data.databaseTables : project.databaseTables,
             files: generatedFiles,
             messages: updatedMessages,
+            changeHistory: data.changeRecord ? [data.changeRecord] : (project.changeHistory || []),
             status: 'completed'
           });
           return;
@@ -466,58 +499,29 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
     if (!selectedElementInfo) return;
     let promptCommand = '';
     if (action === 'color-black') {
-      promptCommand = `[Qaybta: ${selectedElementInfo.selector}] Ka dhig midabka madow saafi ah (bg-black text-white)`;
+      promptCommand = `Ka dhig madow qoraalka ama midabka qaybtan: [Target: ${selectedElementInfo.selector}]`;
     } else if (action === 'color-white') {
-      promptCommand = `[Qaybta: ${selectedElementInfo.selector}] Ka dhig midabka caddaan (bg-white text-slate-900)`;
+      promptCommand = `Ka dhig cad qoraalka ama midabka qaybtan: [Target: ${selectedElementInfo.selector}]`;
     } else if (action === 'color-blue') {
-      promptCommand = `[Qaybta: ${selectedElementInfo.selector}] Ka dhig midabka buluug (bg-blue-600 text-white)`;
+      promptCommand = `Ka dhig buluug midabka qaybtan: [Target: ${selectedElementInfo.selector}]`;
     } else if (action === 'delete') {
-      promptCommand = `[Qaybta: ${selectedElementInfo.selector}] Tir qaybtaan / Delete this element`;
-    } else if (action === 'text') {
-      promptCommand = `[Qaybta: ${selectedElementInfo.selector}] Bedel qoraalka oo ka dhig: "${customText || inlineEditText}"`;
+      promptCommand = `Delete garee meeshan: [Target: ${selectedElementInfo.selector}]`;
+    } else if (action === 'text' && customText) {
+      promptCommand = `U badal qoraalka meeshan "${customText}": [Target: ${selectedElementInfo.selector}]`;
     }
 
-    const res = applyClientTargetedPatch(
-      files['index.html'] || '', 
-      files, 
-      promptCommand, 
-      'so', 
-      selectedElementInfo.selector
-    );
-    const newFiles = res.updatedFiles;
-    const changeRecord = res.changeRecord;
-    const explanation = res.explanation;
-
-    const aiMsg = { 
-      id: Date.now().toString(), 
-      role: 'assistant' as const, 
-      content: explanation, 
-      timestamp: new Date().toISOString(),
-      changeRecord: changeRecord
-    };
-
-    const finalMessages = [...chatMessages, aiMsg];
-    setFiles(newFiles);
-    setChatMessages(finalMessages);
-    setPreviewKey(k => k + 1);
-    setSelectedElementInfo(null);
-    setShowInlineEditModal(false);
-
-    onUpdate({ 
-      ...project, 
-      files: newFiles, 
-      messages: finalMessages,
-      changeHistory: [...(project.changeHistory || []), changeRecord],
-      updatedAt: new Date().toISOString() 
-    });
+    if (promptCommand) {
+      handleSendMessage(promptCommand);
+    }
   };
 
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || isGenerating) return;
+  const handleSendMessage = async (overridePrompt?: string) => {
+    const rawInput = overridePrompt || chatInput;
+    if (!rawInput.trim() || isGenerating) return;
     
-    const userPrompt = chatInput.trim();
+    const userPrompt = rawInput.trim();
     const promptLower = userPrompt.toLowerCase();
-    const targetedSelector = selectedElementInfo?.selector;
+    const currentSelector = selectedElementInfo?.selector;
 
     const newUserMsg = { 
       id: Date.now().toString(), 
@@ -528,7 +532,9 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
     
     const updatedMessages = [...chatMessages, newUserMsg];
     setChatMessages(updatedMessages);
-    setChatInput('');
+    if (!overridePrompt) {
+      setChatInput('');
+    }
     setAttachedFiles([]);
     setIsGenerating(true);
     setError(null);
@@ -569,7 +575,7 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
             currentFiles: files,
             aiConfig: aiConfig,
             language: 'so',
-            targetSelector: targetedSelector
+            targetedSelector: currentSelector
           });
 
           const data = res.data;
@@ -584,11 +590,15 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
 
         // If backend did not supply a patch, apply client-side high-precision targeted patch
         if (!changeRecord) {
-          const localResult = applyClientTargetedPatch(files['index.html'] || '', files, userPrompt, 'so', targetedSelector);
+          const localResult = applyClientTargetedPatch(files['index.html'] || '', files, userPrompt, 'so', currentSelector);
           newFiles = localResult.updatedFiles;
           changeRecord = localResult.changeRecord;
           explanation = localResult.explanation;
         }
+
+        // Reset inspect selection after action executed
+        setSelectedElementInfo(null);
+        setIsInspectMode(false);
 
         const aiMsg = { 
           id: (Date.now() + 1).toString(), 
@@ -604,8 +614,6 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
         setFiles(newFiles);
         setChatMessages(finalMessages);
         setPreviewKey(k => k + 1);
-        setSelectedElementInfo(null);
-        setIsInspectMode(false);
 
         onUpdate({ 
           ...project, 
@@ -751,190 +759,174 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
 </html>`;
     }
 
-    const inspectorScript = `
-<style id="fursad-inspect-styles">
-  .fursad-inspect-hover {
+    if (isInspectMode) {
+      const inspectorCode = `
+<style id="ais-inspector-style">
+  .ais-inspect-hover {
     outline: 2px dashed #2563eb !important;
-    outline-offset: -2px !important;
+    outline-offset: 2px !important;
     cursor: crosshair !important;
+    background-color: rgba(37, 99, 235, 0.08) !important;
   }
-  .fursad-inspect-selected {
+  .ais-inspect-selected {
     outline: 3px solid #2563eb !important;
-    outline-offset: -2px !important;
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25) !important;
+    outline-offset: 3px !important;
+    box-shadow: 0 0 16px rgba(37, 99, 235, 0.45) !important;
   }
 </style>
-<script id="fursad-inspector-script">
+<script id="ais-inspector-script">
 (function() {
-  var isInspectEnabled = ${isInspectMode ? 'true' : 'false'};
-  var activeSelectedSelector = ${selectedElementInfo ? JSON.stringify(selectedElementInfo.selector) : 'null'};
-  var hoverEl = null;
-  var badge = null;
-
-  function ensureBadge() {
-    if (!badge && document.body) {
-      badge = document.createElement('div');
-      badge.id = 'fursad-inspect-badge';
-      badge.style.position = 'fixed';
-      badge.style.zIndex = '999999';
-      badge.style.pointerEvents = 'none';
-      badge.style.background = '#1d4ed8';
-      badge.style.color = '#ffffff';
-      badge.style.fontSize = '11px';
-      badge.style.fontWeight = 'bold';
-      badge.style.fontFamily = 'monospace';
-      badge.style.padding = '3px 8px';
-      badge.style.borderRadius = '6px';
-      badge.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-      badge.style.display = 'none';
-      badge.style.border = '1px solid rgba(255,255,255,0.4)';
-      document.body.appendChild(badge);
-    }
-  }
+  var hoveredEl = null;
+  var tooltip = document.createElement('div');
+  tooltip.style.position = 'fixed';
+  tooltip.style.zIndex = '999999';
+  tooltip.style.padding = '3px 8px';
+  tooltip.style.fontSize = '11px';
+  tooltip.style.fontFamily = 'monospace';
+  tooltip.style.fontWeight = 'bold';
+  tooltip.style.background = '#0f172a';
+  tooltip.style.color = '#38bdf8';
+  tooltip.style.borderRadius = '6px';
+  tooltip.style.pointerEvents = 'none';
+  tooltip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+  tooltip.style.display = 'none';
+  tooltip.id = 'ais-inspector-badge';
+  document.body.appendChild(tooltip);
 
   function getUniqueSelector(el) {
+    if (!el || el === document.body || el === document.documentElement) return 'body';
     if (el.id) return '#' + el.id;
-    var path = [];
-    var curr = el;
-    while (curr && curr.nodeType === Node.ELEMENT_NODE && curr !== document.body && curr !== document.documentElement) {
-      var tag = curr.tagName.toLowerCase();
-      var parent = curr.parentNode;
-      if (parent) {
-        var siblings = Array.from(parent.children).filter(function(c) { return c.tagName.toLowerCase() === tag; });
-        if (siblings.length > 1) {
-          var index = siblings.indexOf(curr) + 1;
-          tag += ':nth-of-type(' + index + ')';
-        }
+    var tag = el.tagName.toLowerCase();
+    if (el.className && typeof el.className === 'string') {
+      var classes = el.className.trim().split(/\\s+/).filter(function(c) {
+        return c && !c.startsWith('ais-inspect');
+      });
+      if (classes.length > 0) {
+        return tag + '.' + classes.slice(0, 2).join('.');
       }
-      path.unshift(tag);
-      curr = parent;
     }
-    return path.join(' > ') || 'body';
-  }
-
-  function highlightSelected() {
-    if (!activeSelectedSelector) return;
-    try {
-      var el = document.querySelector(activeSelectedSelector);
-      if (el) el.classList.add('fursad-inspect-selected');
-    } catch(e) {}
-  }
-
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    ensureBadge();
-    highlightSelected();
-  } else {
-    window.addEventListener('load', function() {
-      ensureBadge();
-      highlightSelected();
-    });
+    return tag;
   }
 
   document.addEventListener('mouseover', function(e) {
-    if (!isInspectEnabled) return;
     var target = e.target;
-    if (target === badge || target === document.body || target === document.documentElement) return;
+    if (target === tooltip || target === document.body || target === document.documentElement) return;
+    if (hoveredEl && hoveredEl !== target) {
+      hoveredEl.classList.remove('ais-inspect-hover');
+    }
+    hoveredEl = target;
+    target.classList.add('ais-inspect-hover');
     
-    if (hoverEl && hoverEl !== target) {
-      hoverEl.classList.remove('fursad-inspect-hover');
-    }
-    hoverEl = target;
-    hoverEl.classList.add('fursad-inspect-hover');
-
-    ensureBadge();
     var rect = target.getBoundingClientRect();
-    var tagText = target.tagName.toLowerCase() + (target.id ? '#' + target.id : (typeof target.className === 'string' && target.className.trim() ? '.' + target.className.split(/\\s+/).filter(Boolean).slice(0, 2).join('.') : ''));
-    if (badge) {
-      badge.innerText = '<' + tagText.slice(0, 32) + '> ' + Math.round(rect.width) + 'x' + Math.round(rect.height);
-      badge.style.display = 'block';
-      badge.style.top = Math.max(4, rect.top - 26) + 'px';
-      badge.style.left = Math.max(4, rect.left) + 'px';
-    }
+    tooltip.style.display = 'block';
+    tooltip.style.top = Math.max(8, rect.top - 24) + 'px';
+    tooltip.style.left = Math.max(8, rect.left) + 'px';
+    tooltip.textContent = '<' + target.tagName.toLowerCase() + (target.id ? '#' + target.id : '') + '>';
   }, true);
 
   document.addEventListener('mouseout', function(e) {
-    if (!isInspectEnabled) return;
-    if (hoverEl) {
-      hoverEl.classList.remove('fursad-inspect-hover');
+    if (hoveredEl) {
+      hoveredEl.classList.remove('ais-inspect-hover');
     }
-    if (badge) badge.style.display = 'none';
+    tooltip.style.display = 'none';
   }, true);
 
   document.addEventListener('click', function(e) {
-    if (!isInspectEnabled) return;
     e.preventDefault();
     e.stopPropagation();
+    
     var target = e.target;
+    if (target === tooltip) return;
+    
     var selector = getUniqueSelector(target);
-    var textSnippet = (target.innerText || target.textContent || '').trim().slice(0, 80);
-    var tagName = target.tagName.toLowerCase();
+    var tag = target.tagName.toLowerCase();
     var id = target.id || '';
     var className = typeof target.className === 'string' ? target.className : '';
+    var textSnippet = target.innerText ? target.innerText.trim().slice(0, 80) : '';
 
-    var prevs = document.querySelectorAll('.fursad-inspect-selected');
-    for (var i = 0; i < prevs.length; i++) prevs[i].classList.remove('fursad-inspect-selected');
-
-    target.classList.add('fursad-inspect-selected');
+    document.querySelectorAll('.ais-inspect-selected').forEach(function(el) {
+      el.classList.remove('ais-inspect-selected');
+    });
+    target.classList.add('ais-inspect-selected');
 
     window.parent.postMessage({
-      type: 'FURSAD_ELEMENT_SELECTED',
+      type: 'AIS_ELEMENT_SELECTED',
       selector: selector,
-      tagName: tagName,
-      textSnippet: textSnippet,
+      tag: tag,
       id: id,
-      className: className
+      className: className,
+      textSnippet: textSnippet
     }, '*');
   }, true);
 })();
-</script>`;
-
-    if (baseHtml.includes('</body>')) {
-      return baseHtml.replace('</body>', `${inspectorScript}\n</body>`);
+</script>
+`;
+      if (baseHtml.includes('</body>')) {
+        return baseHtml.replace('</body>', inspectorCode + '</body>');
+      }
+      return baseHtml + inspectorCode;
     }
-    return baseHtml + inspectorScript;
-  }, [files, selectedFilePath, previewKey, isInspectMode, selectedElementInfo]);
+
+    return baseHtml;
+  }, [files, selectedFilePath, previewKey, isInspectMode]);
 
   return (
-    <div className="h-screen w-screen bg-[#f9fafb] text-slate-900 flex flex-col overflow-hidden font-sans selection:bg-slate-200">
+    <div className={`h-screen w-screen flex flex-col overflow-hidden font-sans transition-colors ${
+      currentTheme === 'dark' ? 'bg-[#060911] text-slate-100 selection:bg-cyan-500/30' : 'bg-[#f9fafb] text-slate-900 selection:bg-slate-200'
+    }`}>
       {/* Workspace Header - Match Screenshot */}
-      <header className="h-14 border-b border-gray-200 flex items-center justify-between px-3 sm:px-5 bg-white shrink-0 z-50">
+      <header className={`h-14 border-b flex items-center justify-between px-3 sm:px-5 shrink-0 z-50 transition-colors ${
+        currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800 text-white' : 'bg-white border-gray-200 text-slate-900'
+      }`}>
         <div className="flex items-center gap-3 min-w-0">
           {/* Back Arrow button */}
           <button 
             onClick={onGoHome || onBack}
-            className="p-1.5 hover:bg-slate-100 text-slate-700 hover:text-slate-900 rounded-lg transition-colors flex items-center shrink-0 active:scale-95"
+            className={`p-1.5 rounded-lg transition-colors flex items-center shrink-0 active:scale-95 ${
+              currentTheme === 'dark' ? 'hover:bg-slate-800 text-slate-300 hover:text-white' : 'hover:bg-slate-100 text-slate-700 hover:text-slate-900'
+            }`}
             title="Back to Projects"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
           {/* FURSAD AI Logo */}
-          <FursadLogo showText={false} size="md" />
+          <FursadLogo showText={false} size="md" theme={currentTheme} />
 
           {/* Title / Prompt */}
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[10px] font-black tracking-wider uppercase text-blue-600 bg-blue-50 border border-blue-200/80 px-1.5 py-0.5 rounded-md shrink-0">
+            <span className={`text-[10px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded-md shrink-0 ${
+              currentTheme === 'dark' ? 'text-cyan-400 bg-cyan-950/80 border border-cyan-800/60' : 'text-blue-600 bg-blue-50 border border-blue-200/80'
+            }`}>
               FURSAD AI
             </span>
-            <h1 className="font-bold text-sm sm:text-base text-slate-900 truncate max-w-[120px] sm:max-w-[240px] md:max-w-[360px]">
+            <h1 className={`font-bold text-sm sm:text-base truncate max-w-[120px] sm:max-w-[240px] md:max-w-[360px] ${
+              currentTheme === 'dark' ? 'text-white' : 'text-slate-900'
+            }`}>
               {project.tagline || project.name}
             </h1>
           </div>
 
           {/* Version badge */}
-          <span className="text-[11px] font-mono text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md font-medium shrink-0">
+          <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded-md font-medium shrink-0 ${
+            currentTheme === 'dark' ? 'text-slate-400 bg-slate-900 border border-slate-800' : 'text-slate-500 bg-slate-100 border border-slate-200'
+          }`}>
             v0
           </span>
         </div>
 
         {/* Center / Right controls */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* View Mode Switcher */}
-          <div className="hidden sm:flex items-center bg-slate-100 border border-slate-200 rounded-xl p-0.5">
+          {/* View Mode Switcher: Preview | Code | Database */}
+          <div className={`hidden sm:flex items-center border rounded-xl p-0.5 ${
+            currentTheme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+          }`}>
             <button 
               onClick={() => setViewMode('preview')}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewMode === 'preview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                viewMode === 'preview' 
+                  ? (currentTheme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-900 shadow-sm') 
+                  : (currentTheme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900')
               }`}
             >
               <Eye className="w-3.5 h-3.5" />
@@ -943,61 +935,88 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
             <button 
               onClick={() => setViewMode('code')}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewMode === 'code' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                viewMode === 'code' 
+                  ? (currentTheme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-900 shadow-sm') 
+                  : (currentTheme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900')
               }`}
             >
               <Code2 className="w-3.5 h-3.5" />
               <span>Code</span>
             </button>
+            <button 
+              onClick={() => setViewMode('database')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                viewMode === 'database' 
+                  ? (currentTheme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-900 shadow-sm') 
+                  : (currentTheme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900')
+              }`}
+              title="Firebase & Supabase Databases"
+            >
+              <Layers className="w-3.5 h-3.5 text-amber-400" />
+              <span>Databases</span>
+              <span className="hidden lg:inline text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono">FB/SB</span>
+            </button>
           </div>
 
-          {/* AI Provider & BYOK Switcher Button */}
+          {/* Publish Button (Deploy to Vercel & Push to GitHub) */}
           <button 
-            onClick={() => setShowAiGatewayModal(true)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200/80 rounded-xl text-xs font-bold text-cyan-800 transition-all active:scale-95"
-            title="Configure AI Provider & BYOK Keys"
+            onClick={() => {
+              setChatSettingsTab('publish');
+              setShowChatSettingsDrawer(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 border border-white/10"
+            title="Publish: Vercel Deploy & GitHub Push"
           >
-            <Cpu className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-            <span className="hidden sm:inline font-mono text-[11px]">
-              {aiConfig.provider.toUpperCase()}: {aiConfig.model.replace('@cf/meta/', '').replace('@cf/deepseek-ai/', '')}
-            </span>
-            <span className="sm:hidden font-mono text-[11px]">AI</span>
+            <Rocket className="w-3.5 h-3.5 text-cyan-300" />
+            <span className="font-extrabold tracking-wide">Publish</span>
           </button>
 
-          {/* Version History & Restore Points Button */}
-          <button 
-            onClick={() => setShowHistoryModal(true)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 transition-all active:scale-95"
-            title="View Change History & Restore Points"
+          {/* Settings Button (Google AI Studio Style Drawer) */}
+          <button
+            onClick={() => {
+              setChatSettingsTab('settings');
+              setShowChatSettingsDrawer(true);
+            }}
+            className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border transition-all flex items-center gap-1.5 font-bold text-xs ${
+              currentTheme === 'dark'
+                ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200 hover:text-white'
+                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800 shadow-xs'
+            }`}
+            title="Chat Settings: Model selection, custom instructions, usage & integrations"
           >
-            <History className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-            <span className="hidden sm:inline">History ({project.changeHistory?.length || 0})</span>
+            <Settings className="w-4 h-4 text-cyan-400" />
+            <span className="hidden md:inline">Settings</span>
           </button>
 
-          {/* Il (Hub) Button */}
-          <button 
-            onClick={() => setSideDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 transition-all active:scale-95"
-            title="Hub: Account, Payment, Dashboard & Settings"
+          {/* Day / Dark Mode Toggle button */}
+          <button
+            onClick={toggleTheme}
+            className={`p-1.5 sm:p-2 rounded-xl border transition-all flex items-center justify-center shrink-0 cursor-pointer ${
+              currentTheme === 'light'
+                ? 'bg-amber-100/90 border-amber-300 text-amber-600 hover:bg-amber-200 shadow-sm'
+                : 'bg-slate-900 border-white/10 text-cyan-300 hover:text-white hover:border-cyan-500/30'
+            }`}
+            title={currentTheme === 'dark' ? 'U badal Day Mode (Qorax)' : 'U badal Dark Mode (Madow)'}
           >
-            <Eye className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-            <span className="hidden xs:inline">Hub</span>
+            {currentTheme === 'dark' ? (
+              <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-800" />
+            )}
           </button>
 
-          {/* Publish & Export */}
-          <button 
-            onClick={handlePublish}
-            className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span className="hidden xs:inline">Publish</span>
-          </button>
+          {/* Export Code button */}
           <button 
             onClick={handleExport}
-            className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 transition-all"
+            className={`hidden lg:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+              currentTheme === 'dark'
+                ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white'
+                : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
+            title="Export Source Code Zip"
           >
             <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Export</span>
+            <span>Export</span>
           </button>
         </div>
       </header>
@@ -1063,37 +1082,84 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
       {/* ========================================================= */}
       {/* DESKTOP LAYOUT (md:flex, hidden on mobile)                 */}
       {/* ========================================================= */}
-      <div className="hidden md:flex flex-1 overflow-hidden relative">
+      <div className="hidden md:flex flex-1 overflow-hidden">
         {/* LEFT: Desktop Sidebar (Chat & Files) */}
         <aside 
           style={{ width: `${sidebarWidth}px` }} 
-          className="border-r border-gray-200 flex flex-col shrink-0 bg-white"
+          className={`border-r flex flex-col shrink-0 select-text transition-colors ${
+            currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800 text-slate-100' : 'bg-white border-gray-200 text-slate-900'
+          }`}
         >
            {/* Sidebar Tabs - Match Screenshot */}
-           <div className="h-12 px-4 flex items-center gap-6 border-b border-gray-200 shrink-0 bg-white">
-              <button 
-                onClick={() => setActiveSidebarTab('chat')}
-                className={`text-sm font-bold transition-all relative h-full flex items-center gap-2 ${
-                  activeSidebarTab === 'chat' ? 'text-black border-b-2 border-black' : 'text-slate-600 hover:text-black'
-                }`}
-              >
-                <MessageSquare className="w-4 h-4 text-black" />
-                <span className="text-black font-bold">Chat</span>
-              </button>
-              <button 
-                onClick={() => setActiveSidebarTab('files')}
-                className={`text-sm font-bold transition-all relative h-full flex items-center gap-2 ${
-                  activeSidebarTab === 'files' ? 'text-black border-b-2 border-black' : 'text-slate-600 hover:text-black'
-                }`}
-              >
-                <FileCode className="w-4 h-4 text-black" />
-                <span className="text-black font-bold">Files</span>
-                <span className="text-xs text-black font-bold">({Object.keys(files).length})</span>
-              </button>
+           <div className={`h-12 px-4 flex items-center justify-between border-b shrink-0 transition-colors ${
+             currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-white border-gray-200'
+           }`}>
+              <div className="flex items-center gap-6 h-full">
+                <button 
+                  onClick={() => setActiveSidebarTab('chat')}
+                  className={`text-sm font-bold transition-all relative h-full flex items-center gap-2 ${
+                    activeSidebarTab === 'chat' 
+                      ? (currentTheme === 'dark' ? 'text-white border-b-2 border-white' : 'text-black border-b-2 border-black')
+                      : (currentTheme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black')
+                  }`}
+                >
+                  <MessageSquare className={`w-4 h-4 ${currentTheme === 'dark' ? 'text-white' : 'text-black'}`} />
+                  <span className={`font-bold ${currentTheme === 'dark' ? 'text-white' : 'text-black'}`}>Chat</span>
+                </button>
+                <button 
+                  onClick={() => setActiveSidebarTab('files')}
+                  className={`text-sm font-bold transition-all relative h-full flex items-center gap-2 ${
+                    activeSidebarTab === 'files' 
+                      ? (currentTheme === 'dark' ? 'text-white border-b-2 border-white' : 'text-black border-b-2 border-black')
+                      : (currentTheme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black')
+                  }`}
+                >
+                  <FileCode className={`w-4 h-4 ${currentTheme === 'dark' ? 'text-white' : 'text-black'}`} />
+                  <span className={`font-bold ${currentTheme === 'dark' ? 'text-white' : 'text-black'}`}>Files</span>
+                  <span className={`text-xs font-bold ${currentTheme === 'dark' ? 'text-slate-400' : 'text-black'}`}>({Object.keys(files).length})</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {/* Edit Tool (Visual Inspector) button in Chat Header */}
+                <button
+                  onClick={() => {
+                    setIsInspectMode(prev => !prev);
+                    if (isInspectMode) setSelectedElementInfo(null);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
+                    isInspectMode 
+                      ? 'bg-blue-600 text-white shadow-xs animate-pulse ring-2 ring-blue-300' 
+                      : (currentTheme === 'dark' ? 'text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 bg-slate-900' : 'text-slate-700 hover:text-black hover:bg-slate-100 border border-slate-200 bg-slate-50')
+                  }`}
+                  title="Edit Tool: Mouse-ka ku dhufo qaybta aad rabto inaad wax ka badasho"
+                >
+                  <Crosshair className={`w-3.5 h-3.5 ${isInspectMode ? 'text-white' : (currentTheme === 'dark' ? 'text-cyan-400' : 'text-blue-600')}`} />
+                  <span className="text-[11px] font-bold">{isInspectMode ? 'Inspect Active' : 'Edit Tool'}</span>
+                </button>
+
+                {/* AI Studio Chat Settings Icon Button */}
+                <button
+                  onClick={() => {
+                    setChatSettingsTab('settings');
+                    setShowChatSettingsDrawer(true);
+                  }}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center border ${
+                    currentTheme === 'dark' 
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800 border-slate-700 bg-slate-900' 
+                      : 'text-slate-700 hover:text-black hover:bg-slate-100 border border-slate-200 bg-slate-50'
+                  }`}
+                  title="Chat settings (Model, System instructions, Usage, GitHub & Vercel)"
+                >
+                  <Settings className="w-3.5 h-3.5 text-slate-400 hover:text-white" />
+                </button>
+              </div>
            </div>
 
            {/* Tab Content */}
-           <div className="flex-1 flex flex-col overflow-hidden relative bg-white">
+           <div className={`flex-1 flex flex-col overflow-hidden relative ${
+             currentTheme === 'dark' ? 'bg-[#090d16]' : 'bg-white'
+           }`}>
               <AnimatePresence mode="wait">
                 {activeSidebarTab === 'chat' ? (
                   <motion.div 
@@ -1101,30 +1167,42 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -10 }}
-                    className="flex-1 flex flex-col overflow-hidden bg-white text-black"
+                    className={`flex-1 flex flex-col overflow-hidden ${
+                      currentTheme === 'dark' ? 'bg-[#090d16] text-slate-100' : 'bg-white text-black'
+                    }`}
                   >
                     {/* Chat Messages */}
                     <div 
-                      className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-thin text-black font-medium"
-                      style={{ color: '#000000' }}
+                      className={`flex-1 overflow-y-auto p-4 space-y-5 scrollbar-thin font-medium ${
+                        currentTheme === 'dark' ? 'text-slate-100' : 'text-black'
+                      }`}
+                      style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}
                     >
                        {chatMessages.map((msg, i) => (
-                         <div key={msg.id || i} className="space-y-1 text-black" style={{ color: '#000000' }}>
-                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-black" style={{ color: '#000000' }}>
+                         <div key={msg.id || i} className="space-y-1" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
+                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
                                {msg.role === 'user' ? (
-                                 <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-black">
-                                   <UserIcon className="w-3.5 h-3.5 text-black" />
+                                 <div className={`w-6 h-6 rounded-full border flex items-center justify-center ${
+                                   currentTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-100 border-slate-300 text-black'
+                                 }`}>
+                                   <UserIcon className="w-3.5 h-3.5" />
                                  </div>
                                ) : (
-                                 <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-black">
-                                   <Bot className="w-3.5 h-3.5 text-black" />
+                                 <div className={`w-6 h-6 rounded-lg border flex items-center justify-center ${
+                                   currentTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-cyan-400' : 'bg-slate-100 border-slate-300 text-black'
+                                 }`}>
+                                   <Bot className="w-3.5 h-3.5" />
                                  </div>
                                )}
-                               <span className="text-black font-extrabold" style={{ color: '#000000' }}>{msg.role === 'user' ? 'YOU' : 'FURSAD AI'}</span>
+                               <span className={`font-extrabold ${currentTheme === 'dark' ? 'text-slate-200' : 'text-black'}`} style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
+                                 {msg.role === 'user' ? 'YOU' : 'FURSAD AI'}
+                               </span>
                             </div>
                             <div 
-                              className="pl-8 text-sm text-black leading-relaxed font-semibold whitespace-pre-wrap"
-                              style={{ color: '#000000' }}
+                              className={`pl-8 text-sm leading-relaxed font-semibold whitespace-pre-wrap ${
+                                currentTheme === 'dark' ? 'text-slate-100' : 'text-black'
+                              }`}
+                              style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}
                             >
                                {msg.content}
                                {msg.changeRecord && (
@@ -1138,48 +1216,52 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                          </div>
                        ))}
 
-                       {/* Inline Thinking & Build Progress (No separate bulky box) */}
+                       {/* Inline Thinking & Build Progress */}
                        {isGenerating && (
-                         <div className="space-y-1.5 py-1 text-black" style={{ color: '#000000' }}>
-                           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-black" style={{ color: '#000000' }}>
-                             <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-black">
-                               <Bot className="w-3.5 h-3.5 text-black" />
+                         <div className="space-y-1.5 py-1" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
+                           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                             <div className={`w-6 h-6 rounded-lg border flex items-center justify-center ${
+                               currentTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-cyan-400' : 'bg-slate-100 border-slate-300 text-black'
+                             }`}>
+                               <Bot className="w-3.5 h-3.5" />
                              </div>
-                             <span className="text-black font-extrabold" style={{ color: '#000000' }}>FURSAD AI</span>
+                             <span className={`font-extrabold ${currentTheme === 'dark' ? 'text-slate-200' : 'text-black'}`} style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>FURSAD AI</span>
                            </div>
 
-                           <div className="pl-8 space-y-1.5 text-black" style={{ color: '#000000' }}>
+                           <div className="pl-8 space-y-1.5" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
                              {/* Active thinking step */}
-                             <div className="inline-flex items-center gap-2 text-xs text-black bg-slate-100 rounded-full px-3 py-1 border border-slate-300" style={{ color: '#000000' }}>
-                               <Loader2 className="w-3 h-3 text-black animate-spin shrink-0" />
-                               <span className="font-bold text-black" style={{ color: '#000000' }}>Fikirka & Dhismaha:</span>
-                               <span className="text-black font-bold truncate max-w-[220px]" style={{ color: '#000000' }}>{interimStatus || 'Waa la dhisayaa...'}</span>
+                             <div className={`inline-flex items-center gap-2 text-xs rounded-full px-3 py-1 border ${
+                               currentTheme === 'dark' ? 'bg-slate-900 border-slate-700 text-cyan-300' : 'bg-slate-100 border-slate-300 text-black'
+                             }`}>
+                               <Loader2 className={`w-3 h-3 animate-spin shrink-0 ${currentTheme === 'dark' ? 'text-cyan-400' : 'text-black'}`} />
+                               <span className="font-bold">Fikirka & Dhismaha:</span>
+                               <span className="font-bold truncate max-w-[220px]">{interimStatus || 'Waa la dhisayaa...'}</span>
                              </div>
 
                              {/* Step checkmarks as each finishes */}
-                             <div className="space-y-1 pt-0.5 text-xs text-black" style={{ color: '#000000' }}>
+                             <div className="space-y-1 pt-0.5 text-xs font-bold" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
                                {buildStepIndex >= 1 && (
-                                 <div className="flex items-center gap-1.5 text-black font-bold" style={{ color: '#000000' }}>
-                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                   <span className="text-black font-bold" style={{ color: '#000000' }}>Qorshaynta & Aqoonsiga dalabka</span>
+                                 <div className="flex items-center gap-1.5">
+                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                   <span>Qorshaynta & Aqoonsiga dalabka</span>
                                  </div>
                                )}
                                {buildStepIndex >= 2 && (
-                                 <div className="flex items-center gap-1.5 text-black font-bold" style={{ color: '#000000' }}>
-                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                   <span className="text-black font-bold" style={{ color: '#000000' }}>Habaynta koodhka & CSS-ka</span>
+                                 <div className="flex items-center gap-1.5">
+                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                   <span>Habaynta koodhka & CSS-ka</span>
                                  </div>
                                )}
                                {buildStepIndex >= 3 && (
-                                 <div className="flex items-center gap-1.5 text-black font-bold" style={{ color: '#000000' }}>
-                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                   <span className="text-black font-bold" style={{ color: '#000000' }}>Hubinta & Badbaadinta qaybaha (Nav, Pricing, Footer)</span>
+                                 <div className="flex items-center gap-1.5">
+                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                   <span>Hubinta & Badbaadinta qaybaha (Nav, Pricing, Footer)</span>
                                  </div>
                                )}
                                {buildStepIndex >= 4 && (
-                                 <div className="flex items-center gap-1.5 text-black font-bold" style={{ color: '#000000' }}>
-                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                   <span className="text-black font-bold" style={{ color: '#000000' }}>Live preview-ga oo la cusboonaysiiyay</span>
+                                 <div className="flex items-center gap-1.5">
+                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                   <span>Live preview-ga oo la cusboonaysiiyay</span>
                                  </div>
                                )}
                              </div>
@@ -1189,7 +1271,9 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                     </div>
 
                     {/* Chat Input - Match Screenshot */}
-                    <div className="p-3 border-t border-gray-200 bg-white">
+                    <div className={`p-3 border-t transition-colors ${
+                      currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-white border-gray-200'
+                    }`}>
                        {/* Hidden File and Folder Inputs */}
                        <input 
                          type="file" 
@@ -1212,7 +1296,9 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                        {attachedFiles.length > 0 && (
                          <div className="flex flex-wrap gap-1.5 mb-2">
                            {attachedFiles.map((f, idx) => (
-                             <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-mono">
+                             <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border ${
+                               currentTheme === 'dark' ? 'bg-blue-950/80 border-blue-700/60 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+                             }`}>
                                <span>{f}</span>
                                <button 
                                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))}
@@ -1227,57 +1313,194 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
 
                        {/* Listening Voice Banner */}
                        {isListening && (
-                         <div className="mb-2 px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 text-red-600 text-xs font-bold flex items-center justify-between animate-pulse">
+                         <div className={`mb-2 px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center justify-between animate-pulse ${
+                           currentTheme === 'dark' ? 'bg-rose-950/80 border-rose-800/60 text-rose-300' : 'bg-red-50 border-red-200 text-red-600'
+                         }`}>
                            <div className="flex items-center gap-1.5">
                              <Mic className="w-3.5 h-3.5" />
                              <span>🎙️ Waan dhagaysanayaa... Ku hadal codkaaga</span>
                            </div>
-                           <button onClick={toggleVoice} className="text-[10px] underline hover:text-red-800">Jooji</button>
+                           <button onClick={toggleVoice} className="text-[10px] underline hover:text-red-400">Jooji</button>
                          </div>
                        )}
 
-                       {/* Active Marked Element Pill above chat input */}
+                       {/* Selected Element Inspector Box & Quick Actions (Helper banner removed as requested) */}
                        {selectedElementInfo && (
-                         <div className="mb-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between text-xs text-black shadow-sm">
-                           <div className="flex items-center gap-2 min-w-0">
-                             <Crosshair className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                             <span className="font-bold text-black shrink-0">Qaybta la xushay:</span>
-                             <code className="bg-blue-100 text-blue-900 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold">
-                               &lt;{selectedElementInfo.tagName}&gt;
-                             </code>
-                             <span className="text-[11px] text-black font-semibold truncate max-w-[140px]">
-                               "{selectedElementInfo.textSnippet || selectedElementInfo.selector}"
-                             </span>
+                         <div className={`mb-2.5 p-2.5 rounded-xl border shadow-sm space-y-2 ${
+                           currentTheme === 'dark'
+                             ? 'bg-[#131926] border-blue-500/40 text-slate-100 shadow-blue-500/5'
+                             : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-slate-900'
+                         }`}>
+                           <div className="flex items-center justify-between">
+                             <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold truncate">
+                               <Crosshair className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                               <span className={`px-1.5 py-0.5 rounded font-bold uppercase text-[10px] ${
+                                 currentTheme === 'dark' ? 'bg-blue-900/70 text-blue-300 border border-blue-700/50' : 'bg-blue-200/80 text-blue-900'
+                               }`}>
+                                 {selectedElementInfo.tag}
+                               </span>
+                               <span className={`truncate font-medium max-w-[160px] ${
+                                 currentTheme === 'dark' ? 'text-slate-300' : 'text-slate-700'
+                               }`}>
+                                 {selectedElementInfo.selector}
+                               </span>
+                             </div>
+                             {/* Clicking X closes inspector directly without following banner */}
+                             <button 
+                               onClick={() => {
+                                 setSelectedElementInfo(null);
+                                 setIsInspectMode(false);
+                               }}
+                               className="text-slate-400 hover:text-rose-400 p-0.5 rounded transition-colors cursor-pointer"
+                               title="Xir calaamadaynta (Close inspection)"
+                             >
+                               <X className="w-3.5 h-3.5" />
+                             </button>
                            </div>
-                           <button
-                             type="button"
-                             onClick={() => setSelectedElementInfo(null)}
-                             className="p-1 text-slate-600 hover:text-black hover:bg-blue-100 rounded-lg transition-colors"
-                             title="Ka noqo doorashada / Clear target"
-                           >
-                             <X className="w-3.5 h-3.5 text-black" />
-                           </button>
+
+                           {selectedElementInfo.textSnippet && (
+                             <div className={`text-[11px] rounded-lg p-1.5 font-medium line-clamp-2 ${
+                               currentTheme === 'dark' ? 'bg-slate-900/90 border border-slate-700/70 text-slate-200' : 'bg-white/90 border border-blue-100 text-slate-800'
+                             }`}>
+                               <span className={`font-semibold mr-1 ${currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Qoraalka:</span>
+                               "{selectedElementInfo.textSnippet}"
+                             </div>
+                           )}
+
+                           {/* Quick Action Chips */}
+                           <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                             <button
+                               type="button"
+                               onClick={() => setShowInlineEditModal(true)}
+                               className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold shadow-xs transition-all active:scale-95 ${
+                                 currentTheme === 'dark'
+                                   ? 'bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/40'
+                                   : 'bg-white hover:bg-blue-100 border border-blue-200 text-blue-800'
+                               }`}
+                             >
+                               <Pencil className="w-3 h-3 text-blue-500" />
+                               <span>Bedel Qoraalka</span>
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => handleDirectElementAction('color-black')}
+                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-black hover:bg-slate-800 text-white text-[10px] font-bold shadow-xs transition-all active:scale-95 border border-slate-700"
+                             >
+                               <span className="w-2 h-2 rounded-full bg-white"></span>
+                               <span>Ka dhig Madow</span>
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => handleDirectElementAction('color-white')}
+                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-[10px] font-bold shadow-xs transition-all active:scale-95"
+                             >
+                               <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                               <span>Ka dhig Cad</span>
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => handleDirectElementAction('delete')}
+                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold shadow-xs transition-all active:scale-95"
+                             >
+                               <Trash2 className="w-3 h-3 text-white" />
+                               <span>Delete</span>
+                             </button>
+                           </div>
                          </div>
                        )}
 
-                       <div className="relative bg-white border border-slate-300 rounded-2xl shadow-sm focus-within:border-black focus-within:ring-2 focus-within:ring-slate-100 transition-all p-1.5 flex items-center gap-1.5">
+                       {/* Inline Text Edit Modal */}
+                       {showInlineEditModal && selectedElementInfo && (
+                         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+                           <div className={`rounded-2xl max-w-md w-full p-5 shadow-2xl border space-y-4 ${
+                             currentTheme === 'dark' ? 'bg-[#0f172a] border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                           }`}>
+                             <div className="flex items-center justify-between">
+                               <div className="flex items-center gap-2">
+                                 <Pencil className="w-4 h-4 text-blue-500" />
+                                 <h3 className="font-bold text-sm">Bedel Qoraalka Qaybtan</h3>
+                               </div>
+                               <button 
+                                 onClick={() => setShowInlineEditModal(false)}
+                                 className="p-1 text-slate-400 hover:text-slate-300 rounded-lg"
+                               >
+                                 <X className="w-4 h-4" />
+                               </button>
+                             </div>
+
+                             <div className={`text-xs font-mono px-2 py-1 rounded truncate border ${
+                               currentTheme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'
+                             }`}>
+                               Target: {selectedElementInfo.selector}
+                             </div>
+
+                             <div>
+                               <label className={`block text-xs font-semibold mb-1 ${
+                                 currentTheme === 'dark' ? 'text-slate-300' : 'text-slate-700'
+                               }`}>Qoraalka Cusub:</label>
+                               <textarea
+                                 value={inlineEditText}
+                                 onChange={(e) => setInlineEditText(e.target.value)}
+                                 rows={3}
+                                 className={`w-full text-xs p-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium resize-none ${
+                                   currentTheme === 'dark' 
+                                     ? 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-500' 
+                                     : 'bg-white border-slate-300 text-black placeholder:text-slate-400'
+                                 }`}
+                                 placeholder="Gali qoraalka aad rabto halkan..."
+                               />
+                             </div>
+
+                             <div className="flex justify-end gap-2 pt-1">
+                               <button
+                                 onClick={() => setShowInlineEditModal(false)}
+                                 className={`px-3 py-1.5 text-xs font-bold rounded-xl ${
+                                   currentTheme === 'dark' ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+                                 }`}
+                               >
+                                 Baaji
+                               </button>
+                               <button
+                                 onClick={() => {
+                                   setShowInlineEditModal(false);
+                                   handleDirectElementAction('text', inlineEditText);
+                                 }}
+                                 disabled={!inlineEditText.trim()}
+                                 className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-xl shadow-sm"
+                               >
+                                 Keydi & Badal
+                               </button>
+                             </div>
+                           </div>
+                         </div>
+                       )}
+
+                       <div className={`relative rounded-2xl shadow-sm transition-all p-1.5 flex items-center gap-1.5 ${
+                         currentTheme === 'dark'
+                           ? 'bg-[#131926] border border-slate-700/80 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/20'
+                           : 'bg-white border border-slate-300 focus-within:border-black focus-within:ring-2 focus-within:ring-slate-100'
+                       }`}>
                           {/* File upload & Voice tools */}
                           <div className="flex items-center gap-1 shrink-0 pl-1">
                             <button 
                               type="button"
                               onClick={() => builderFileInputRef.current?.click()}
-                              className="p-1.5 text-black hover:text-black hover:bg-slate-100 rounded-lg transition-colors"
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                currentTheme === 'dark' ? 'text-slate-300 hover:text-white hover:bg-slate-800' : 'text-black hover:bg-slate-100'
+                              }`}
                               title="Gali Fayl / Upload File"
                             >
-                              <Paperclip className="w-4 h-4 text-black" />
+                              <Paperclip className="w-4 h-4" />
                             </button>
                             <button 
                               type="button"
                               onClick={() => builderFolderInputRef.current?.click()}
-                              className="p-1.5 text-black hover:text-black hover:bg-slate-100 rounded-lg transition-colors"
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                currentTheme === 'dark' ? 'text-slate-300 hover:text-white hover:bg-slate-800' : 'text-black hover:bg-slate-100'
+                              }`}
                               title="Gali Folder / Upload Folder"
                             >
-                              <FolderPlus className="w-4 h-4 text-black" />
+                              <FolderPlus className="w-4 h-4" />
                             </button>
                             <button 
                               type="button"
@@ -1285,11 +1508,11 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                               className={`p-1.5 rounded-lg transition-all ${
                                 isListening 
                                   ? 'bg-rose-500 text-white animate-pulse' 
-                                  : 'text-black hover:text-black hover:bg-slate-100'
+                                  : (currentTheme === 'dark' ? 'text-slate-300 hover:text-white hover:bg-slate-800' : 'text-black hover:bg-slate-100')
                               }`}
                               title={isListening ? "Jooji / Stop recording" : "Ku hadal codka / Voice prompt"}
                             >
-                              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4 text-black" />}
+                              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                             </button>
                           </div>
 
@@ -1305,12 +1528,18 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                             placeholder="Qor waxaad rabto ama ku hadal codka (e.g. kudar shopping cart)..."
                             rows={1}
                             disabled={isGenerating}
-                            className="w-full text-xs text-black placeholder:text-slate-500 bg-transparent outline-none resize-none px-2 py-1 font-semibold"
+                            className={`w-full text-xs bg-transparent outline-none resize-none px-2 py-1 font-semibold ${
+                              currentTheme === 'dark' ? 'text-white placeholder:text-slate-500' : 'text-black placeholder:text-slate-500'
+                            }`}
                           />
                           <button 
-                            onClick={handleSendMessage}
+                            onClick={() => handleSendMessage()}
                             disabled={isGenerating || !chatInput.trim()}
-                            className="w-8 h-8 rounded-xl bg-black hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all shrink-0 active:scale-95"
+                            className={`w-8 h-8 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 active:scale-95 ${
+                              currentTheme === 'dark'
+                                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-md shadow-cyan-500/25'
+                                : 'bg-black hover:bg-slate-800 text-white'
+                            }`}
                           >
                              <ArrowUp className="w-4 h-4" />
                           </button>
@@ -1352,94 +1581,114 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                 )}
               </AnimatePresence>
            </div>
-        </aside>
+         </aside>
 
-        {/* Draggable Divider between Chat & Preview */}
+        {/* Resizable Divider Handle between Chat and Preview */}
         <div 
-          onMouseDown={(e) => {
-            e.preventDefault();
-            setIsDraggingSidebar(true);
-          }}
-          onDoubleClick={() => setSidebarWidth(360)}
-          className="w-2 hover:w-2.5 bg-transparent hover:bg-blue-500/30 cursor-col-resize z-40 transition-all flex items-center justify-center group relative select-none shrink-0"
-          title="Jiid si aad u weynayso Chat-ka ama Preview-ga (Laba jeer guji si dib loogu celiyo 360px)"
+          onMouseDown={() => setIsDraggingSidebar(true)}
+          className={`w-2 hover:w-2.5 cursor-col-resize select-none flex items-center justify-center shrink-0 z-30 transition-all group relative ${
+            isDraggingSidebar 
+              ? (currentTheme === 'dark' ? 'bg-cyan-500 shadow-md shadow-cyan-500/40' : 'bg-blue-600 shadow-md shadow-blue-500/30') 
+              : (currentTheme === 'dark' ? 'bg-slate-800 hover:bg-cyan-500' : 'bg-gray-200 hover:bg-blue-500')
+          }`}
+          title="Jiid bidix ama midig si aad u weynayso ama u yarayso Chat-ka iyo Preview-ga (Resize Chat & Preview)"
         >
-          <div className={`w-0.5 h-full transition-all ${isDraggingSidebar ? 'bg-blue-600 w-1' : 'bg-gray-200 group-hover:bg-blue-500'}`} />
-          <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-9 rounded-full bg-white border border-gray-300 shadow-sm flex items-center justify-center transition-opacity ${isDraggingSidebar ? 'opacity-100 ring-2 ring-blue-500' : 'opacity-0 group-hover:opacity-100'}`}>
-            <div className="flex gap-0.5">
-              <div className="w-0.5 h-3 bg-gray-400 rounded-full" />
-              <div className="w-0.5 h-3 bg-gray-400 rounded-full" />
-            </div>
-          </div>
+          <div className="w-0.5 h-8 rounded-full bg-slate-400 group-hover:bg-white transition-colors" />
         </div>
 
-        {/* Fullscreen transparent dragging backdrop to prevent iframe event trapping */}
+        {/* Global drag shield to prevent iframe from swallowing mouse events */}
         {isDraggingSidebar && (
-          <div 
-            className="fixed inset-0 z-50 cursor-col-resize select-none bg-transparent"
-            style={{ pointerEvents: 'auto', userSelect: 'none' }}
-          />
+          <div className="fixed inset-0 z-50 cursor-col-resize select-none bg-transparent" />
         )}
 
         {/* Desktop Main Canvas */}
-        <main className="flex-1 flex flex-col min-w-0 bg-[#f9fafb] relative">
-           <div className="h-10 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
+        <main className={`flex-1 flex flex-col min-w-0 relative transition-colors ${
+          currentTheme === 'dark' ? 'bg-[#060911]' : 'bg-[#f9fafb]'
+        }`}>
+           <div className={`h-10 border-b flex items-center justify-between px-4 shrink-0 transition-colors ${
+             currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-white border-gray-200'
+           }`}>
               <div className="flex items-center gap-4">
-                 <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
-                    <Monitor className="w-3.5 h-3.5 text-slate-700" />
-                    <span>preview • {selectedFilePath}</span>
+                 <div className="flex items-center gap-2 text-xs font-mono">
+                    <Monitor className={`w-3.5 h-3.5 ${currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`} />
+                    <span className={currentTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'}>preview • {selectedFilePath}</span>
                  </div>
                  
                  {(viewMode === 'preview' || viewMode === 'split') && (
-                   <div className="flex items-center gap-1 border-l border-gray-200 pl-4">
+                   <div className={`flex items-center gap-1 border-l pl-4 ${
+                     currentTheme === 'dark' ? 'border-slate-800' : 'border-gray-200'
+                   }`}>
                       <button 
                         onClick={() => setDeviceMode('desktop')} 
-                        className={`p-1 rounded-lg transition-all ${deviceMode === 'desktop' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}
+                        className={`p-1 rounded-lg transition-all ${
+                          deviceMode === 'desktop' 
+                            ? (currentTheme === 'dark' ? 'bg-slate-800 text-cyan-400 shadow-sm' : 'bg-slate-100 text-slate-900 shadow-sm') 
+                            : (currentTheme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')
+                        }`}
                         title="Desktop view"
                       >
                          <Monitor className="w-3.5 h-3.5" />
                       </button>
                       <button 
                         onClick={() => setDeviceMode('tablet')} 
-                        className={`p-1 rounded-lg transition-all ${deviceMode === 'tablet' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}
+                        className={`p-1 rounded-lg transition-all ${
+                          deviceMode === 'tablet' 
+                            ? (currentTheme === 'dark' ? 'bg-slate-800 text-cyan-400 shadow-sm' : 'bg-slate-100 text-slate-900 shadow-sm') 
+                            : (currentTheme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')
+                        }`}
                         title="Tablet view"
                       >
                          <Tablet className="w-3.5 h-3.5" />
                       </button>
                       <button 
                         onClick={() => setDeviceMode('mobile')} 
-                        className={`p-1 rounded-lg transition-all ${deviceMode === 'mobile' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}
+                        className={`p-1 rounded-lg transition-all ${
+                          deviceMode === 'mobile' 
+                            ? (currentTheme === 'dark' ? 'bg-slate-800 text-cyan-400 shadow-sm' : 'bg-slate-100 text-slate-900 shadow-sm') 
+                            : (currentTheme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')
+                        }`}
                         title="Mobile view"
                       >
                          <Smartphone className="w-3.5 h-3.5" />
                       </button>
                    </div>
                  )}
+
+                 {/* Visual Element Edit Tool (Mouse Inspect) */}
+                 <div className={`flex items-center gap-1.5 border-l pl-3 ${
+                   currentTheme === 'dark' ? 'border-slate-800' : 'border-gray-200'
+                 }`}>
+                   <button
+                     onClick={() => {
+                       setIsInspectMode(prev => !prev);
+                       if (isInspectMode) {
+                         setSelectedElementInfo(null);
+                       }
+                     }}
+                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all shadow-xs ${
+                       isInspectMode 
+                         ? 'bg-blue-600 text-white shadow-blue-500/20 ring-2 ring-blue-300 animate-pulse' 
+                         : (currentTheme === 'dark' ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300')
+                     }`}
+                     title="Qalabka Edit Tool: Mouse-ka ku dhufo qaybta aad rabto inaad si toos ah wax uga bedesho"
+                   >
+                     <Crosshair className={`w-3.5 h-3.5 ${isInspectMode ? 'text-white' : (currentTheme === 'dark' ? 'text-cyan-400' : 'text-blue-600')}`} />
+                     <span className="font-bold">{isInspectMode ? 'Inspect Active' : 'Edit Tool'}</span>
+                   </button>
+                   {isInspectMode && (
+                     <span className="text-[11px] text-blue-500 font-medium hidden lg:inline animate-pulse">
+                       👆 Ku dhufo qayb kasta oo preview-ga ku jirta
+                     </span>
+                   )}
+                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                 {(viewMode === 'preview' || viewMode === 'split') && (
-                   <button 
-                     onClick={() => {
-                       const next = !isInspectMode;
-                       setIsInspectMode(next);
-                       if (!next) setSelectedElementInfo(null);
-                     }} 
-                     className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                       isInspectMode 
-                         ? 'bg-blue-600 text-white ring-2 ring-blue-500/40' 
-                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-black border border-slate-200'
-                     }`}
-                     title="Edit Tool: Guji qayb kasta oo aad rabto inaad calaamadeyso ama toos u bedesho (Inspect & Edit Element)"
-                   >
-                     <Crosshair className={`w-3.5 h-3.5 ${isInspectMode ? 'animate-spin' : ''}`} />
-                     <span>{isInspectMode ? 'Edit Tool (Firfircoon)' : 'Edit Tool (Dooro Qayb)'}</span>
-                   </button>
-                 )}
-
                  <button 
                    onClick={() => setPreviewKey(k => k + 1)} 
-                   className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                   className={`p-1.5 rounded-lg transition-colors ${
+                     currentTheme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                   }`}
                    title="Reload Preview"
                  >
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -1448,7 +1697,9 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
            </div>
 
            {/* Canvas Body */}
-           <div className="flex-1 flex overflow-hidden">
+           <div className={`flex-1 flex overflow-hidden ${
+             currentTheme === 'dark' ? 'bg-[#060911]' : 'bg-[#f9fafb]'
+           }`}>
               {(viewMode === 'code' || viewMode === 'split') && (
                 <div className={`h-full flex flex-col bg-[#1e1e1e] ${viewMode === 'split' ? 'w-1/2 border-r border-slate-800' : 'w-full'}`}>
                    <div className="h-8 bg-[#252526] px-4 flex items-center justify-between text-xs font-mono text-slate-400 border-b border-white/5">
@@ -1479,29 +1730,37 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
               )}
 
               {(viewMode === 'preview' || viewMode === 'split') && (
-                <div className={`h-full flex items-center justify-center p-4 lg:p-6 bg-[#f9fafb] overflow-auto ${viewMode === 'split' ? 'w-1/2' : 'w-full'}`}>
-                   <div className={`transition-all duration-300 shadow-xl bg-white border border-gray-200 overflow-hidden flex flex-col ${
+                <div className={`h-full flex items-center justify-center p-4 lg:p-6 overflow-auto transition-colors ${
+                  currentTheme === 'dark' ? 'bg-[#060911]' : 'bg-[#f9fafb]'
+                } ${viewMode === 'split' ? 'w-1/2' : 'w-full'}`}>
+                   <div className={`transition-all duration-300 shadow-2xl overflow-hidden flex flex-col ${
+                     currentTheme === 'dark' ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-gray-200'
+                   } ${
                      deviceMode === 'mobile' ? 'w-[375px] h-[680px] rounded-[2.5rem]' : 
                      deviceMode === 'tablet' ? 'w-[680px] h-[820px] rounded-3xl' : 'w-full h-full rounded-2xl'
                    }`}>
-                      <div className="h-7 bg-slate-100 border-b border-gray-200 flex items-center px-3 gap-2 shrink-0">
+                      <div className={`h-7 border-b flex items-center px-3 gap-2 shrink-0 ${
+                        currentTheme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-gray-200'
+                      }`}>
                          <div className="flex items-center gap-1.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
-                            <div className="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
-                            <div className="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
+                            <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80"></div>
+                            <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80"></div>
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></div>
                          </div>
-                         <div className="flex-1 max-w-xs mx-auto bg-white border border-gray-200 rounded-md px-2 py-0.5 text-[10px] font-mono text-slate-500 text-center truncate">
+                         <div className={`flex-1 max-w-xs mx-auto border rounded-md px-2 py-0.5 text-[10px] font-mono text-center truncate ${
+                           currentTheme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-gray-200 text-slate-500'
+                         }`}>
                             https://{project.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}.local
                          </div>
                          {isGenerating && (
-                           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-mono animate-pulse">
+                           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/40 text-blue-400 text-[10px] font-mono animate-pulse">
                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
                              <span>Updating live...</span>
                            </div>
                          )}
                       </div>
 
-                      {/* Website preview iframe is ALWAYS standing and active! */}
+                      {/* Website preview iframe is ALWAYS standing and active! Independent styles preserved! */}
                       <div className="relative flex-1 w-full h-full bg-white">
                         <iframe 
                           key={previewKey}
@@ -1518,6 +1777,17 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                         )}
                       </div>
                    </div>
+                </div>
+              )}
+
+              {/* Database Manager (Firebase & Supabase) View */}
+              {viewMode === 'database' && (
+                <div className="h-full w-full p-4 lg:p-6 overflow-hidden">
+                   <DatabaseManager 
+                     files={files}
+                     language="so"
+                     theme={currentTheme}
+                   />
                 </div>
               )}
            </div>
@@ -1540,39 +1810,56 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
         {(mobileTab === 'side-by-side' || mobileTab === 'chat') && (
           <div 
             ref={chatPanelRef}
-            className={`flex flex-col bg-white text-black h-full border-r border-gray-200 ${
+            className={`flex flex-col h-full border-r transition-colors ${
+              currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800 text-slate-100' : 'bg-white border-gray-200 text-black'
+            } ${
               mobileTab === 'side-by-side' ? 'w-[90vw] sm:w-[360px] shrink-0 snap-start' : 'w-full'
             }`}
           >
-             <div className="h-10 px-3 bg-white border-b border-gray-200 flex items-center justify-between text-xs font-bold text-black">
+             <div className={`h-10 px-3 border-b flex items-center justify-between text-xs font-bold ${
+               currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800 text-white' : 'bg-white border-gray-200 text-black'
+             }`}>
                 <div className="flex items-center gap-2">
-                   <MessageSquare className="w-3.5 h-3.5 text-black" />
-                   <span className="text-black font-bold">Chat</span>
+                   <MessageSquare className={`w-3.5 h-3.5 ${currentTheme === 'dark' ? 'text-white' : 'text-black'}`} />
+                   <span className="font-bold">Chat</span>
                 </div>
-                <span className="text-[10px] text-black bg-slate-100 px-2 py-0.5 rounded-full border border-slate-300 font-mono font-bold">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-mono font-bold ${
+                  currentTheme === 'dark' ? 'text-slate-400 bg-slate-900 border-slate-800' : 'text-black bg-slate-100 border-slate-300'
+                }`}>
                   v0
                 </span>
              </div>
 
              {/* Message list */}
-             <div className="flex-1 overflow-y-auto p-3 space-y-4">
+             <div 
+               className={`flex-1 overflow-y-auto p-3 space-y-4 ${
+                 currentTheme === 'dark' ? 'text-slate-100' : 'text-black'
+               }`}
+               style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}
+             >
                 {chatMessages.map((msg, i) => (
-                  <div key={msg.id || i} className="space-y-1">
-                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-black" style={{ color: '#000000' }}>
+                  <div key={msg.id || i} className="space-y-1" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
+                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
                         {msg.role === 'user' ? (
-                          <div className="w-5 h-5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-black">
-                            <UserIcon className="w-3 h-3 text-black" />
+                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                            currentTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-100 border-slate-300 text-black'
+                          }`}>
+                            <UserIcon className="w-3 h-3" />
                           </div>
                         ) : (
-                          <div className="w-5 h-5 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-black">
-                            <Bot className="w-3 h-3 text-black" />
+                          <div className={`w-5 h-5 rounded-lg border flex items-center justify-center ${
+                            currentTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-cyan-400' : 'bg-slate-100 border-slate-300 text-black'
+                          }`}>
+                            <Bot className="w-3 h-3" />
                           </div>
                         )}
-                        <span className="text-black font-extrabold" style={{ color: '#000000' }}>{msg.role === 'user' ? 'YOU' : 'AI'}</span>
+                        <span className="font-extrabold" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>{msg.role === 'user' ? 'YOU' : 'AI'}</span>
                      </div>
                      <div 
-                       className="pl-7 text-xs text-black leading-relaxed font-semibold whitespace-pre-wrap"
-                       style={{ color: '#000000' }}
+                       className={`pl-7 text-xs leading-relaxed font-semibold whitespace-pre-wrap ${
+                         currentTheme === 'dark' ? 'text-slate-100' : 'text-black'
+                       }`}
+                       style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}
                      >
                         {msg.content}
                         {msg.changeRecord && (
@@ -1586,35 +1873,39 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                   </div>
                 ))}
                 {isGenerating && (
-                  <div className="space-y-1.5 py-1 text-black" style={{ color: '#000000' }}>
-                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-black" style={{ color: '#000000' }}>
-                        <div className="w-5 h-5 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-black">
-                          <Bot className="w-3 h-3 text-black" />
+                  <div className="space-y-1.5 py-1" style={{ color: currentTheme === 'dark' ? '#f1f5f9' : '#000000' }}>
+                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                        <div className={`w-5 h-5 rounded-lg border flex items-center justify-center ${
+                          currentTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-cyan-400' : 'bg-slate-100 border-slate-300 text-black'
+                        }`}>
+                          <Bot className="w-3 h-3" />
                         </div>
-                        <span className="text-black font-extrabold" style={{ color: '#000000' }}>FURSAD AI</span>
+                        <span className="font-extrabold">FURSAD AI</span>
                      </div>
-                     <div className="pl-7 space-y-1 text-xs text-black" style={{ color: '#000000' }}>
-                        <div className="inline-flex items-center gap-1.5 text-[11px] text-black bg-slate-100 rounded-full px-2.5 py-0.5 border border-slate-300" style={{ color: '#000000' }}>
-                          <Loader2 className="w-2.5 h-2.5 text-black animate-spin shrink-0" />
-                          <span className="font-bold text-black" style={{ color: '#000000' }}>Fikirka:</span>
-                          <span className="text-black font-bold truncate max-w-[170px]" style={{ color: '#000000' }}>{interimStatus || 'Dhisaya...'}</span>
+                     <div className="pl-7 space-y-1 text-xs">
+                        <div className={`inline-flex items-center gap-1.5 text-[11px] rounded-full px-2.5 py-0.5 border ${
+                          currentTheme === 'dark' ? 'bg-slate-900 border-slate-700 text-cyan-300' : 'bg-slate-100 border-slate-300 text-black'
+                        }`}>
+                          <Loader2 className={`w-2.5 h-2.5 animate-spin shrink-0 ${currentTheme === 'dark' ? 'text-cyan-400' : 'text-black'}`} />
+                          <span className="font-bold">Fikirka:</span>
+                          <span className="font-bold truncate max-w-[170px]">{interimStatus || 'Dhisaya...'}</span>
                         </div>
                         {buildStepIndex >= 1 && (
-                          <div className="flex items-center gap-1 text-black text-[11px] font-bold" style={{ color: '#000000' }}>
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                            <span className="text-black font-bold" style={{ color: '#000000' }}>Qorshaynta dalabka</span>
+                          <div className="flex items-center gap-1 text-[11px] font-bold">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                            <span>Qorshaynta dalabka</span>
                           </div>
                         )}
                         {buildStepIndex >= 2 && (
-                          <div className="flex items-center gap-1 text-black text-[11px] font-bold" style={{ color: '#000000' }}>
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                            <span className="text-black font-bold" style={{ color: '#000000' }}>Habaynta koodhka</span>
+                          <div className="flex items-center gap-1 text-[11px] font-bold">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                            <span>Habaynta koodhka</span>
                           </div>
                         )}
                         {buildStepIndex >= 3 && (
-                          <div className="flex items-center gap-1 text-black text-[11px] font-bold" style={{ color: '#000000' }}>
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                            <span className="text-black font-bold" style={{ color: '#000000' }}>Hubinta badbaadada</span>
+                          <div className="flex items-center gap-1 text-[11px] font-bold">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                            <span>Hubinta badbaadada</span>
                           </div>
                         )}
                      </div>
@@ -1623,24 +1914,36 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
              </div>
 
              {/* Input */}
-             <div className="p-2.5 border-t border-gray-200 bg-white">
-                <div className="relative bg-white border border-slate-300 rounded-2xl shadow-sm focus-within:border-black p-1 flex items-center gap-1.5">
+             <div className={`p-2.5 border-t transition-colors ${
+               currentTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-white border-gray-200'
+             }`}>
+                <div className={`relative rounded-2xl shadow-sm p-1 flex items-center gap-1.5 ${
+                  currentTheme === 'dark' 
+                    ? 'bg-[#131926] border border-slate-700/80 focus-within:border-cyan-500' 
+                    : 'bg-white border border-slate-300 focus-within:border-black'
+                }`}>
                    <div className="flex items-center gap-0.5 shrink-0 pl-1">
                      <button 
                        type="button"
                        onClick={() => builderFileInputRef.current?.click()}
-                       className="p-1 text-black hover:text-black rounded-lg"
+                       className={`p-1 rounded-lg transition-colors ${
+                         currentTheme === 'dark' ? 'text-slate-300 hover:text-white' : 'text-black'
+                       }`}
                        title="Upload File"
                      >
-                       <Paperclip className="w-3.5 h-3.5 text-black" />
+                       <Paperclip className="w-3.5 h-3.5" />
                      </button>
                      <button 
                        type="button"
                        onClick={toggleVoice}
-                       className={`p-1 rounded-lg ${isListening ? 'bg-rose-500 text-white animate-pulse' : 'text-black hover:text-black'}`}
+                       className={`p-1 rounded-lg ${
+                         isListening 
+                           ? 'bg-rose-500 text-white animate-pulse' 
+                           : (currentTheme === 'dark' ? 'text-slate-300 hover:text-white' : 'text-black')
+                       }`}
                        title="Voice"
                      >
-                       <Mic className="w-3.5 h-3.5 text-black" />
+                       <Mic className="w-3.5 h-3.5" />
                      </button>
                    </div>
                    <textarea 
@@ -1655,12 +1958,18 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                      placeholder="Ask AI / Ku hadal codka..."
                      rows={1}
                      disabled={isGenerating}
-                     className="w-full text-xs text-black placeholder:text-slate-500 bg-transparent outline-none resize-none px-2 py-1 font-semibold"
+                     className={`w-full text-xs bg-transparent outline-none resize-none px-2 py-1 font-semibold ${
+                       currentTheme === 'dark' ? 'text-white placeholder:text-slate-500' : 'text-black placeholder:text-slate-500'
+                     }`}
                    />
                    <button 
-                     onClick={handleSendMessage}
+                     onClick={() => handleSendMessage()}
                      disabled={isGenerating || !chatInput.trim()}
-                     className="w-7 h-7 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center shrink-0 active:scale-95"
+                     className={`w-7 h-7 rounded-xl disabled:opacity-30 text-white flex items-center justify-center shrink-0 active:scale-95 ${
+                       currentTheme === 'dark'
+                         ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500'
+                         : 'bg-slate-900 hover:bg-slate-800'
+                     }`}
                    >
                       <ArrowUp className="w-3.5 h-3.5" />
                    </button>
@@ -1937,6 +2246,45 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
           </motion.div>
         </div>
       )}
+
+      {/* GitHub Integration Modal */}
+      <GitHubModal
+        project={project}
+        isOpen={showGithubModal}
+        onClose={() => setShowGithubModal(false)}
+        theme={currentTheme}
+      />
+
+      {/* Google AI Studio Style Chat Settings & Integrations Drawer */}
+      <ChatSettingsDrawer
+        isOpen={showChatSettingsDrawer}
+        onClose={() => setShowChatSettingsDrawer(false)}
+        project={project}
+        onUpdateProject={(p) => {
+          onUpdate(p);
+          setFiles(p.files);
+        }}
+        aiConfig={aiConfig}
+        onUpdateAiConfig={(newCfg) => {
+          setAiConfig(newCfg);
+          onUpdate({ ...project, aiConfig: newCfg });
+        }}
+        theme={currentTheme}
+        user={user}
+        initialTab={chatSettingsTab}
+        onOpenVercelModal={() => {
+          setShowChatSettingsDrawer(false);
+          setShowVercelModal(true);
+        }}
+        onOpenGithubModal={() => {
+          setShowChatSettingsDrawer(false);
+          setShowGithubModal(true);
+        }}
+        onOpenDatabaseView={() => {
+          setShowChatSettingsDrawer(false);
+          setViewMode('database');
+        }}
+      />
     </div>
   );
 };

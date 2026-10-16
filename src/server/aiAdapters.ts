@@ -18,37 +18,37 @@ export const SUPPORTED_PROVIDERS: {
     hasServerDefault: true,
     models: [
       {
-        id: 'gemini-3.8-flash',
-        name: 'Gemini 3.8 Flash',
+        id: 'gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash',
         provider: 'gemini',
-        description: 'Next-gen Gemini 3.8 Flash: Ultra-fast reasoning, instant code updates, and low latency.',
+        description: 'Recommended: Highest speed, exceptional coding precision, function calling & live edits.',
         contextWindow: '1M tokens',
         recommendedFor: 'fast-edits',
         isDefault: true,
       },
       {
-        id: 'gemini-2.5-flash',
-        name: 'Gemini 2.5 Flash',
-        provider: 'gemini',
-        description: 'Recommended: Highest speed, exceptional coding precision & fast edits.',
-        contextWindow: '1M tokens',
-        recommendedFor: 'balanced',
-      },
-      {
         id: 'gemini-flash-latest',
         name: 'Gemini Flash Latest',
         provider: 'gemini',
-        description: 'Standard fast production model.',
+        description: 'Standard fast production model with robust multi-turn reasoning.',
         contextWindow: '1M tokens',
         recommendedFor: 'balanced',
       },
       {
-        id: 'gemini-2.5-pro',
-        name: 'Gemini 2.5 Pro',
+        id: 'gemini-3.1-flash-lite',
+        name: 'Gemini 3.1 Flash Lite',
         provider: 'gemini',
-        description: 'Deep reasoning for complex multi-file architectural refactors.',
-        contextWindow: '2M tokens',
-        recommendedFor: 'code-refactor',
+        description: 'Ultra-lightweight, high throughput fast response model.',
+        contextWindow: '1M tokens',
+        recommendedFor: 'balanced',
+      },
+      {
+        id: 'gemini-3.8-flash',
+        name: 'Gemini 3.8 Flash',
+        provider: 'gemini',
+        description: 'Next-gen Gemini 3.8 Flash (auto-falls back to 2.5 during traffic spikes).',
+        contextWindow: '1M tokens',
+        recommendedFor: 'fast-edits',
       }
     ]
   },
@@ -879,7 +879,6 @@ export function applyDeterministicTargetedPatch(
   checks.push('Validated HTML layout structure');
   checks.push('Preserved existing components and scripts');
   return { modifiedHtml, summary, targetElement, beforeSnippet, afterSnippet, checks };
-}
 }
 
 // 4. Strict Targeted Updater Workflow Coordinator

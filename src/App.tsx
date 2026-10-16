@@ -9,6 +9,7 @@ import { TemplatesPage } from './components/dashboard/TemplatesPage.tsx';
 import { ProjectsPage } from './components/dashboard/ProjectsPage.tsx';
 import { BillingPage } from './components/dashboard/BillingPage.tsx';
 import { SettingsPage } from './components/dashboard/SettingsPage.tsx';
+import { DeploymentsPage } from './components/dashboard/DeploymentsPage.tsx';
 import { UIState, User, ProjectState, AppView, AIProviderConfig } from './types.ts';
 import { initialProject } from './data/initialProject.ts';
 import { generateProjectFromPrompt } from './data/projectGenerator.ts';
@@ -21,10 +22,9 @@ const STORAGE_USER_KEY = 'fursad_ai_user_session';
 export default function App() {
   // Global UI State
   const [ui, setUi] = useState<UIState>(() => {
-    const savedActiveId = localStorage.getItem(STORAGE_ACTIVE_PROJ_KEY);
     const savedTheme = (localStorage.getItem('fursad_ai_theme') as 'light' | 'dark') || 'dark';
     return {
-      view: savedActiveId ? 'builder' : 'landing',
+      view: 'landing', // Always open landing page when app starts/reloads
       theme: savedTheme,
       sidebarOpen: true,
       language: 'en'
@@ -67,6 +67,8 @@ export default function App() {
     } catch {}
     return null;
   });
+
+  const [promptForPane, setPromptForPane] = useState<string>('');
 
   // Hydrate from and sync with server store
   useEffect(() => {
@@ -119,15 +121,12 @@ export default function App() {
   };
 
   const handleStartBuilding = (initialPrompt?: string) => {
-    if (initialPrompt) {
-      handleCreateProjectFromPrompt(initialPrompt);
-      return;
-    }
-    if (!user) {
-      setUi(prev => ({ ...prev, view: 'auth' }));
-    } else {
-      setUi(prev => ({ ...prev, view: 'builder' }));
-    }
+    // When Start Building is clicked, do not directly jump into an existing project.
+    // Open the first prompt section (CreateProjectPane) as standard so user can prompt freely.
+    setActiveProject(null);
+    localStorage.removeItem(STORAGE_ACTIVE_PROJ_KEY);
+    setPromptForPane(initialPrompt || '');
+    setUi(prev => ({ ...prev, view: 'builder' }));
   };
 
   const handleCreateProjectFromPrompt = (prompt: string, initialAiConfig?: AIProviderConfig) => {
@@ -242,6 +241,7 @@ export default function App() {
       return (
         <CreateProjectPane 
           user={user}
+          initialPrompt={promptForPane}
           onLogout={handleLogout}
           onGoHome={() => setUi(prev => ({ ...prev, view: 'landing' }))}
           onGenerate={handleCreateProjectFromPrompt}
@@ -270,6 +270,8 @@ export default function App() {
         }}
         onLogout={handleLogout}
         onSelectProject={handleOpenProject}
+        theme={ui.theme}
+        onToggleTheme={handleToggleTheme}
       />
     );
   }
@@ -296,6 +298,8 @@ export default function App() {
           <CoursePage 
             user={user}
             language={ui.language}
+            onBack={() => setUi(prev => ({ ...prev, view: 'landing' }))}
+            onStartBuilding={() => handleStartBuilding()}
           />
         )}
 
@@ -321,12 +325,13 @@ export default function App() {
         )}
 
         {ui.view === 'deployments' && (
-           <div className="py-40 flex flex-col items-center justify-center text-center opacity-50 space-y-4">
-              <div className="w-20 h-20 rounded-[2rem] bg-white/5 border border-white/5 flex items-center justify-center text-slate-700">
-                <Globe className="w-10 h-10" />
-              </div>
-              <p className="text-xs font-mono uppercase tracking-[0.3em]">Deployment Pipeline Incoming</p>
-           </div>
+          <DeploymentsPage 
+            user={user}
+            projects={projects}
+            onOpenProject={handleOpenProject}
+            language={ui.language}
+            theme={ui.theme}
+          />
         )}
       </DashboardLayout>
     );

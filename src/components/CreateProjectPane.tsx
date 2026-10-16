@@ -46,6 +46,7 @@ interface CreateProjectPaneProps {
   language: LanguageType;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  initialPrompt?: string;
 }
 
 interface QuickModelOption {
@@ -133,9 +134,16 @@ export const CreateProjectPane: React.FC<CreateProjectPaneProps> = ({
   onOpenProject,
   language,
   theme: controlledTheme,
-  onToggleTheme 
+  onToggleTheme,
+  initialPrompt = ''
 }) => {
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(initialPrompt || '');
+
+  useEffect(() => {
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+    }
+  }, [initialPrompt]);
   const [isListening, setIsListening] = useState(false);
   const [voiceToast, setVoiceToast] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; size: string; content?: string }>>([]);
