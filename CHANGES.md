@@ -51,3 +51,13 @@
 - With only `OPENROUTER_API_KEY` set (no Gemini key), the server uses OpenRouter automatically (`OPENROUTER_DEFAULT_MODEL`, default `openrouter/auto`).
 - Check the connection: server log at startup (`[OpenRouter] OK ...`) and `GET /api/ai/openrouter/status` (signed in).
 - `.env` is included in this zip for local testing. It is git-ignored. Remove or replace the key before sharing the zip or deploying, and rotate it at https://openrouter.ai/keys.
+
+## Automatic provider choice (added)
+- You can choose Gemini (built-in key) or any OpenRouter model in the model selector (grouped: Gemini / OpenRouter) and in AI Settings.
+- If the chosen one does not respond, the other is used automatically: chosen model -> the other built-in provider -> OpenRouter Auto Router. The chat message says which one answered. If all fail you get one clear error listing every reason (no template).
+- A provider is only tried if a key exists for it (`GEMINI_API_KEY` or `OPENROUTER_API_KEY` in `.env`, or the user's own key). The user's own key is never sent to a different provider.
+- Applies to creating, editing and targeted updates (`getProviderCandidates` in `src/server/aiAdapters.ts`, `executeAgenticWorkflow` in `src/server/agenticEngine.ts`).
+
+## Model lists (added)
+- New shared hook `src/lib/useModelCatalog.ts` loads the Gemini models and every OpenRouter model once and shares them.
+- All three places that show models now list the same groups: Gemini, your own key (OpenAI, Claude, Cloudflare) and OpenRouter (all models): the create screen, the builder's Chat settings drawer, and AI Settings (provider cards with search).

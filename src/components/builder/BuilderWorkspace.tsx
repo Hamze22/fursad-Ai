@@ -64,7 +64,6 @@ import {
 import { ProjectState, User, AppView, AIProviderConfig, ChangeRecord } from '../../types.ts';
 import { exportProjectZip, applyOperations } from '../../lib/projectUtils.ts';
 import { BASE_SYSTEM } from '../../lib/ai/prompts.ts';
-import { generateProjectFromPrompt } from '../../data/projectGenerator.ts';
 import { BuilderSideDrawer } from './BuilderSideDrawer.tsx';
 import { FursadLogo } from '../common/FursadLogo.tsx';
 import { ChangeRecordCard } from './ChangeRecordCard.tsx';
@@ -256,7 +255,8 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
       // Real Gemini API call to server
       axios.post('/api/ai/build', {
         prompt: userPrompt,
-        language: 'so'
+        language: 'so',
+        aiConfig: project.aiConfig
       })
       .then(res => {
         const data = res.data;
@@ -293,31 +293,24 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
           });
           return;
         }
-        throw new Error('API returned fallback structure');
+        throw new Error('The AI did not return a website.');
       })
       .catch(err => {
-        console.warn('Real AI generation API call encountered error, using synthesized domain model:', err);
-        const generated = generateProjectFromPrompt(userPrompt, 'developer', 'so');
-        const assistantMsg = {
+        const reason = err?.response?.data?.error || err?.message || 'Unknown error';
+        console.warn('AI build failed:', reason);
+        const errorMsg = {
           id: Date.now().toString(),
           role: 'assistant' as const,
-          content: `✨ Waxaan si buuxda kuugu dhisay: **${generated.name}**!\n\nKoodhka index.html, React components, iyo muuqaalka tooska ah (Live Preview) hada way diyaar yihiin.`,
+          content: `⚠️ AI-gu ma dhisin website-ka: ${reason}\n\nHubi furaha API-ga iyo moodelka (Settings), kadibna mar kale isku day. Template lama isticmaalin.`,
           timestamp: new Date().toISOString()
         };
-
-        const updatedMessages = [project.messages[0], assistantMsg];
-        setFiles(generated.files);
+        const updatedMessages = [project.messages[0], errorMsg];
         setChatMessages(updatedMessages);
-        setPreviewKey(k => k + 1);
         setIsGenerating(false);
-
         onUpdate({
           ...project,
-          name: generated.name,
-          databaseTables: generated.databaseTables,
-          files: generated.files,
           messages: updatedMessages,
-          status: 'completed'
+          status: 'draft'
         });
       });
     }
@@ -634,6 +627,7 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
       let updatedTables = project.databaseTables;
       let geminiSuccess = false;
 
+      let buildError = '';
       try {
         const res = await axios.post('/api/ai/build', {
           prompt: userPrompt,
@@ -654,16 +648,13 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
           }
           geminiSuccess = true;
         }
-      } catch (apiErr) {
+      } catch (apiErr: any) {
         console.warn('AI build API endpoint call:', apiErr);
+        buildError = apiErr?.response?.data?.error || apiErr?.message || '';
       }
 
       if (!geminiSuccess) {
-        const generated = generateProjectFromPrompt(userPrompt, 'developer', 'so');
-        newFiles = { ...generated.files };
-        updatedProjectName = generated.name;
-        updatedTables = generated.databaseTables;
-        explanation = `✨ Waxaan si buuxda kuugu dhisay: **${generated.name}**!\n\nKoodhka index.html, React components, iyo muuqaalka tooska ah (Live Preview) hada way diyaar yihiin.`;
+        throw new Error(buildError || 'The AI did not return a website.');
       }
 
       // Finalize assistant message
@@ -692,7 +683,7 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
       const fallbackAiMsg = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
-        content: `I've processed: "${userPrompt}". Code and live preview have been updated.`,
+        content: `⚠️ AI-gu ma dhamaystirin codsiga: ${err?.message || 'Unknown error'}\n\nHubi furaha API-ga iyo moodelka, kadibna mar kale isku day. Template lama isticmaalin.`,
         timestamp: new Date().toISOString()
       };
       setChatMessages(prev => [...prev, fallbackAiMsg]);
@@ -1766,7 +1757,7 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                           key={previewKey}
                           srcDoc={currentPreviewDoc}
                           title="Interactive Preview Sandbox"
-                          sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
+                          sandbox="allow-scripts allow-modals allow-forms"
                           className="w-full h-full border-none bg-white"
                         />
                         {isGenerating && (
@@ -2026,7 +2017,7 @@ export const BuilderWorkspace: React.FC<BuilderWorkspaceProps> = ({
                        key={previewKey}
                        srcDoc={currentPreviewDoc}
                        title="Mobile Live Preview"
-                       sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
+                       sandbox="allow-scripts allow-modals allow-forms"
                        className="w-full h-full border-none bg-white"
                      />
                      {isGenerating && (

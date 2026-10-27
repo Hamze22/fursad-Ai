@@ -33,6 +33,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { ProjectState, AIProviderConfig, AIProviderType, User } from '../../types.ts';
+import { useModelCatalog } from '../../lib/useModelCatalog.ts';
 
 export type DrawerTab = 'settings' | 'share' | 'publish' | 'versions' | 'github' | 'integrations';
 
@@ -89,7 +90,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
   );
 
   // GitHub Account Connection State
-  const [ghToken, setGhToken] = useState(() => localStorage.getItem('fursad_ai_github_token') || '');
+  const [ghToken, setGhToken] = useState(() => sessionStorage.getItem('fursad_ai_github_token') || '');
   const [ghUser, setGhUser] = useState<{ login: string; avatar_url?: string; name?: string; repos?: number } | null>(() => {
     try {
       const saved = localStorage.getItem('fursad_ai_github_user');
@@ -109,7 +110,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
   const [ghPushSuccess, setGhPushSuccess] = useState(false);
 
   // Vercel Connection State
-  const [vercelToken, setVercelToken] = useState(() => localStorage.getItem('fursad_ai_vercel_token') || '');
+  const [vercelToken, setVercelToken] = useState(() => sessionStorage.getItem('fursad_ai_vercel_token') || '');
   const [vercelUser, setVercelUser] = useState<{ username: string; email?: string } | null>(() => {
     try {
       const saved = localStorage.getItem('fursad_ai_vercel_user');
@@ -124,13 +125,13 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
   // Firebase Connection State
   const [fbProjectId, setFbProjectId] = useState(() => localStorage.getItem('fursad_ai_fb_project_id') || 'fursad-ai-demo');
   const [fbApiKey, setFbApiKey] = useState(() => localStorage.getItem('fursad_ai_fb_api_key') || '');
-  const [fbConnected, setFbConnected] = useState(true);
+  const [fbConnected, setFbConnected] = useState(false);
   const [fbTesting, setFbTesting] = useState(false);
 
   // Supabase Connection State
   const [sbUrl, setSbUrl] = useState(() => localStorage.getItem('fursad_ai_sb_url') || 'https://xyzcompany.supabase.co');
   const [sbAnonKey, setSbAnonKey] = useState(() => localStorage.getItem('fursad_ai_sb_anon_key') || '');
-  const [sbConnected, setSbConnected] = useState(true);
+  const [sbConnected, setSbConnected] = useState(false);
   const [sbTesting, setSbTesting] = useState(false);
 
   // Share & Copy Toast
@@ -141,11 +142,29 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
 
+  // Every model: Gemini + OpenRouter (all) + providers that use your own key
+  const catalog = useModelCatalog();
+  const geminiModels: ModelOption[] = [
+    ...AVAILABLE_MODELS.filter(m => m.provider === 'gemini'),
+    ...catalog.gemini
+      .filter(g => !AVAILABLE_MODELS.some(m => m.id === g.id))
+      .map(g => ({ id: g.id, name: g.name, provider: 'gemini' as AIProviderType, badge: 'Gemini', description: g.description }))
+  ];
+  const ownKeyModels: ModelOption[] = AVAILABLE_MODELS.filter(m => m.provider !== 'gemini');
+  const openRouterModels: ModelOption[] = catalog.openrouter.map(m => ({
+    id: m.id,
+    name: `${m.name}${m.free ? ' (free)' : ''}`,
+    provider: 'openrouter' as AIProviderType,
+    badge: 'OpenRouter',
+    description: m.description
+  }));
+  const allModels: ModelOption[] = [...geminiModels, ...ownKeyModels, ...openRouterModels];
+
   if (!isOpen) return null;
 
   // Handle Model Change
   const handleSelectModel = (modelId: string) => {
-    const selected = AVAILABLE_MODELS.find(m => m.id === modelId);
+    const selected = allModels.find(m => m.id === modelId);
     if (!selected) return;
     onUpdateAiConfig({
       ...aiConfig,
@@ -171,16 +190,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
   // Connect GitHub Account
   const handleConnectGitHub = async () => {
     if (!ghToken.trim()) {
-      // Connect as demo/mock authenticated user if no token provided
-      const mockUser = {
-        login: 'somfxstore',
-        name: user?.fullName || 'Ahmed Hassan',
-        avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
-        repos: 14
-      };
-      setGhUser(mockUser);
-      localStorage.setItem('fursad_ai_github_user', JSON.stringify(mockUser));
-      setGhError(null);
+      setGhError('Enter a GitHub personal access token to connect.');
       return;
     }
 
@@ -201,7 +211,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
         repos: data.public_repos
       };
       setGhUser(connectedUser);
-      localStorage.setItem('fursad_ai_github_token', ghToken.trim());
+      sessionStorage.setItem('fursad_ai_github_token', ghToken.trim());
       localStorage.setItem('fursad_ai_github_user', JSON.stringify(connectedUser));
     } catch (err: any) {
       setGhError(err.message || 'Failed to authenticate with GitHub API');
@@ -224,35 +234,22 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
 
   // Connect Vercel Account
   const handleConnectVercel = async () => {
-    if (!vercelToken.trim()) {
-      const mockUser = {
-        username: user?.email ? user.email.split('@')[0] : 'somfxstore',
-        email: user?.email || 'somfxstore@gmail.com'
-      };
-      setVercelUser(mockUser);
-      localStorage.setItem('fursad_ai_vercel_user', JSON.stringify(mockUser));
-      return;
-    }
+    if (!vercelToken.trim()) return;
     try {
       const res = await fetch('https://api.vercel.com/v2/user', {
         headers: { Authorization: `Bearer ${vercelToken.trim()}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        const connected = {
-          username: data.user.username,
-          email: data.user.email
-        };
-        setVercelUser(connected);
-        localStorage.setItem('fursad_ai_vercel_token', vercelToken.trim());
-        localStorage.setItem('fursad_ai_vercel_user', JSON.stringify(connected));
-      } else {
-        const mockUser = { username: 'somfxstore', email: 'somfxstore@gmail.com' };
-        setVercelUser(mockUser);
-      }
+      if (!res.ok) return;
+      const data = await res.json();
+      const connected = {
+        username: data.user.username,
+        email: data.user.email
+      };
+      setVercelUser(connected);
+      sessionStorage.setItem('fursad_ai_vercel_token', vercelToken.trim());
+      localStorage.setItem('fursad_ai_vercel_user', JSON.stringify(connected));
     } catch {
-      const mockUser = { username: 'somfxstore', email: 'somfxstore@gmail.com' };
-      setVercelUser(mockUser);
+      // Not connected: the token could not be verified.
     }
   };
 
@@ -266,26 +263,34 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
     }, 2000);
   };
 
-  // Test Firebase Connection
+  // Firebase: the config is only saved here. A real check needs the Firebase SDK
+  // (calls to Firebase are blocked inside the preview), so it is not verified.
   const handleTestFirebase = () => {
-    setFbTesting(true);
     localStorage.setItem('fursad_ai_fb_project_id', fbProjectId);
     localStorage.setItem('fursad_ai_fb_api_key', fbApiKey);
-    setTimeout(() => {
-      setFbTesting(false);
-      setFbConnected(true);
-    }, 1000);
+    setFbConnected(Boolean(fbProjectId.trim() && fbApiKey.trim()));
   };
 
-  // Test Supabase Connection
-  const handleTestSupabase = () => {
-    setSbTesting(true);
+  // Supabase: ask the project's REST endpoint with the anon key.
+  const handleTestSupabase = async () => {
     localStorage.setItem('fursad_ai_sb_url', sbUrl);
     localStorage.setItem('fursad_ai_sb_anon_key', sbAnonKey);
-    setTimeout(() => {
+    setSbTesting(true);
+    try {
+      const base = sbUrl.trim().replace(/\/$/, '');
+      if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(base) || !sbAnonKey.trim()) {
+        setSbConnected(false);
+        return;
+      }
+      const res = await fetch(`${base}/rest/v1/`, {
+        headers: { apikey: sbAnonKey.trim(), Authorization: `Bearer ${sbAnonKey.trim()}` }
+      });
+      setSbConnected(res.ok);
+    } catch {
+      setSbConnected(false);
+    } finally {
       setSbTesting(false);
-      setSbConnected(true);
-    }, 1000);
+    }
   };
 
   const handleCopyShare = () => {
@@ -443,11 +448,32 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
                         : 'bg-[#1c1f2a] border-[#2e3343] text-white focus:border-blue-500 shadow-inner'
                     }`}
                   >
-                    {AVAILABLE_MODELS.map(m => (
-                      <option key={m.id} value={m.id} className={theme === 'light' ? 'bg-white text-slate-900' : 'bg-[#1c1f2a] text-white'}>
-                        {m.name} {m.badge ? `(${m.badge})` : ''}
-                      </option>
-                    ))}
+                    {!allModels.some(m => m.id === aiConfig.model) && (
+                      <option value={aiConfig.model} className={theme === 'light' ? 'bg-white text-slate-900' : 'bg-[#1c1f2a] text-white'}>{aiConfig.model}</option>
+                    )}
+                    <optgroup label="Gemini">
+                      {geminiModels.map(m => (
+                        <option key={m.id} value={m.id} className={theme === 'light' ? 'bg-white text-slate-900' : 'bg-[#1c1f2a] text-white'}>
+                          {m.name} {m.badge ? `(${m.badge})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Your own key (OpenAI, Claude, Cloudflare)">
+                      {ownKeyModels.map(m => (
+                        <option key={m.id} value={m.id} className={theme === 'light' ? 'bg-white text-slate-900' : 'bg-[#1c1f2a] text-white'}>
+                          {m.name} {m.badge ? `(${m.badge})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {openRouterModels.length > 0 && (
+                      <optgroup label={`OpenRouter (${openRouterModels.length} models)`}>
+                        {openRouterModels.map(m => (
+                          <option key={m.id} value={m.id} className={theme === 'light' ? 'bg-white text-slate-900' : 'bg-[#1c1f2a] text-white'}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                   <ChevronRight className="w-4 h-4 text-slate-400 absolute right-4 top-4 rotate-90 pointer-events-none" />
                 </div>
@@ -455,7 +481,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
                 <p className={`text-[11px] leading-relaxed pt-1 ${
                   theme === 'light' ? 'text-slate-500' : 'text-slate-400'
                 }`}>
-                  {AVAILABLE_MODELS.find(m => m.id === aiConfig.model)?.description || 'High-performance AI model for autonomous full-stack development.'}
+                  {allModels.find(m => m.id === aiConfig.model)?.description || 'High-performance AI model for autonomous full-stack development.'}
                 </p>
               </div>
 
@@ -725,7 +751,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
                 {ghPushSuccess && (
                   <div className="p-3 rounded-xl bg-purple-950/60 border border-purple-500/30 text-xs text-purple-200 flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-purple-400" />
-                    <span>Pushed successfully to branch main! Commits synced.</span>
+                    <span>Demo only: nothing was sent to GitHub. Use the git commands from your exported project to push for real.</span>
                   </div>
                 )}
               </div>
@@ -768,7 +794,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
                       onClick={() => {
                         setGhUser(null);
                         localStorage.removeItem('fursad_ai_github_user');
-                        localStorage.removeItem('fursad_ai_github_token');
+                        sessionStorage.removeItem('fursad_ai_github_token');
                       }}
                       className="px-2.5 py-1 rounded-lg border border-red-500/30 hover:bg-red-500/10 text-red-400 text-xs font-semibold"
                     >
@@ -841,7 +867,7 @@ export const ChatSettingsDrawer: React.FC<ChatSettingsDrawerProps> = ({
                 </button>
                 {ghPushSuccess && (
                   <p className="text-xs text-emerald-400 font-semibold text-center">
-                    ✓ Changes pushed to GitHub successfully!
+                    Demo only: nothing was sent to GitHub.
                   </p>
                 )}
               </div>

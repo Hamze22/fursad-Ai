@@ -277,19 +277,6 @@ export const BuilderSideDrawer: React.FC<BuilderSideDrawerProps> = ({
                       <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white" />
                     </button>
 
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onNavigateView('templates');
-                      }}
-                      className="w-full flex items-center justify-between p-3 bg-slate-900/60 hover:bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold text-slate-200 transition-all group"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Layers className="w-4 h-4 text-blue-400" />
-                        <span>Templates Marketplace</span>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white" />
-                    </button>
                   </div>
                 </div>
 

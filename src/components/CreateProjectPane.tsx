@@ -32,6 +32,7 @@ import {
   Moon
 } from 'lucide-react';
 import axios from 'axios';
+import { useModelCatalog } from '../lib/useModelCatalog.ts';
 import { LanguageType, ProjectState, AIProviderType, AIProviderConfig } from '../types.ts';
 import { TimeGraphiteBackground } from './TimeGraphiteBackground.tsx';
 import { FursadLogo } from './common/FursadLogo.tsx';
@@ -198,7 +199,35 @@ export const CreateProjectPane: React.FC<CreateProjectPaneProps> = ({
     }
   }, []);
 
-  const selectedModel = AVAILABLE_MODELS.find(m => m.id === aiConfig.model) || AVAILABLE_MODELS[0];
+  // Models: Gemini + every OpenRouter model + providers that use your own key
+  const catalog = useModelCatalog();
+  const orServerKey = catalog.orServerKey;
+  const allModels: QuickModelOption[] = [
+    ...AVAILABLE_MODELS.filter(m => m.provider === 'gemini'),
+    ...catalog.gemini
+      .filter(g => !AVAILABLE_MODELS.some(m => m.id === g.id))
+      .map(g => ({
+        id: g.id,
+        name: g.name,
+        provider: 'gemini' as AIProviderType,
+        badge: 'Gemini',
+        description: g.description,
+        requiresKey: false,
+        icon: '✨'
+      })),
+    ...AVAILABLE_MODELS.filter(m => m.provider !== 'gemini'),
+    ...catalog.openrouter.map(m => ({
+      id: m.id,
+      name: `${m.name}${m.free ? ' (free)' : ''}`,
+      provider: 'openrouter' as AIProviderType,
+      badge: 'OpenRouter',
+      description: m.description,
+      requiresKey: !orServerKey,
+      icon: '🌐'
+    }))
+  ];
+
+  const selectedModel = allModels.find(m => m.id === aiConfig.model) || allModels[0];
 
   const handleSelectModel = (model: QuickModelOption) => {
     const updated: AIProviderConfig = {
@@ -599,16 +628,34 @@ export const CreateProjectPane: React.FC<CreateProjectPaneProps> = ({
                    <select
                      value={aiConfig.model}
                      onChange={(e) => {
-                       const model = AVAILABLE_MODELS.find(m => m.id === e.target.value);
+                       const model = allModels.find(m => m.id === e.target.value);
                        if (model) handleSelectModel(model);
                      }}
                      className="bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
                    >
-                     {AVAILABLE_MODELS.map((model) => (
-                       <option key={model.id} value={model.id}>
-                         {model.icon} {model.name} {model.requiresKey ? '(BYOK)' : ''}
-                       </option>
-                     ))}
+                     <optgroup label="Gemini">
+                       {allModels.filter(m => m.provider === 'gemini').map((model) => (
+                         <option key={model.id} value={model.id}>
+                           {model.icon} {model.name}
+                         </option>
+                       ))}
+                     </optgroup>
+                     <optgroup label="Your own key (OpenAI, Claude, Cloudflare)">
+                       {allModels.filter(m => m.provider !== 'gemini' && m.provider !== 'openrouter').map((model) => (
+                         <option key={model.id} value={model.id}>
+                           {model.icon} {model.name} (BYOK)
+                         </option>
+                       ))}
+                     </optgroup>
+                     {catalog.openrouter.length > 0 && (
+                       <optgroup label={`OpenRouter (${catalog.openrouter.length} models)`}>
+                         {allModels.filter(m => m.provider === 'openrouter').map((model) => (
+                           <option key={model.id} value={model.id}>
+                             {model.icon} {model.name}
+                           </option>
+                         ))}
+                       </optgroup>
+                     )}
                    </select>
                  </div>
 

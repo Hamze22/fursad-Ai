@@ -35,7 +35,7 @@ export interface DbTable {
   sampleRows?: any[];
 }
 
-export type AIProviderType = 'gemini' | 'openai' | 'cloudflare' | 'groq' | 'anthropic';
+export type AIProviderType = 'gemini' | 'openai' | 'cloudflare' | 'groq' | 'anthropic' | 'openrouter';
 
 export interface AIProviderConfig {
   provider: AIProviderType;
@@ -99,7 +99,7 @@ export interface ProjectState {
   customInstructions?: string;
 }
 
-export type AppView = 'landing' | 'auth' | 'dashboard' | 'builder' | 'course' | 'billing' | 'settings' | 'projects' | 'templates' | 'deployments';
+export type AppView = 'landing' | 'auth' | 'dashboard' | 'builder' | 'course' | 'billing' | 'settings' | 'projects' | 'deployments';
 
 export interface UIState {
   view: AppView;

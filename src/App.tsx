@@ -5,14 +5,12 @@ import { AuthPage } from './components/auth/AuthPage.tsx';
 import { DashboardLayout } from './components/dashboard/DashboardLayout.tsx';
 import { BuilderWorkspace } from './components/builder/BuilderWorkspace.tsx';
 import { CoursePage } from './components/dashboard/CoursePage.tsx';
-import { TemplatesPage } from './components/dashboard/TemplatesPage.tsx';
 import { ProjectsPage } from './components/dashboard/ProjectsPage.tsx';
 import { BillingPage } from './components/dashboard/BillingPage.tsx';
 import { SettingsPage } from './components/dashboard/SettingsPage.tsx';
 import { DeploymentsPage } from './components/dashboard/DeploymentsPage.tsx';
 import { UIState, User, ProjectState, AppView, AIProviderConfig } from './types.ts';
-import { initialProject } from './data/initialProject.ts';
-import { generateProjectFromPrompt } from './data/projectGenerator.ts';
+import { createBlankProject } from './lib/newProject.ts';
 import { CreateProjectPane } from './components/CreateProjectPane.tsx';
 
 const STORAGE_PROJECTS_KEY = 'fursad_ai_saved_projects';
@@ -49,7 +47,7 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [initialProject];
+    return [];
   });
 
   const [activeProject, setActiveProject] = useState<ProjectState | null>(() => {
@@ -70,8 +68,38 @@ export default function App() {
 
   const [promptForPane, setPromptForPane] = useState<string>('');
 
+  // Verify the saved session with the server (cookie is httpOnly, so ask the server)
+  useEffect(() => {
+    axios.get('/api/auth/me')
+      .then(res => {
+        if (res.data?.user) setUser(res.data.user);
+      })
+      .catch(() => {
+        setUser(null);
+        try { localStorage.removeItem(STORAGE_USER_KEY); } catch {}
+      });
+  }, []);
+
+  // If any API call comes back 401 (session expired), send the user to sign in
+  useEffect(() => {
+    const id = axios.interceptors.response.use(
+      r => r,
+      err => {
+        const url = String(err?.config?.url || '');
+        if (err?.response?.status === 401 && !url.includes('/api/auth/')) {
+          setUser(null);
+          try { localStorage.removeItem(STORAGE_USER_KEY); } catch {}
+          setUi(prev => (prev.view === 'landing' ? prev : { ...prev, view: 'auth' }));
+        }
+        return Promise.reject(err);
+      }
+    );
+    return () => axios.interceptors.response.eject(id);
+  }, []);
+
   // Hydrate from and sync with server store
   useEffect(() => {
+    if (!user) return;
     axios.get('/api/projects')
       .then(res => {
         if (Array.isArray(res.data) && res.data.length > 0) {
@@ -92,7 +120,7 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [user?.id]);
 
   // Save projects to localStorage whenever updated
   const saveProjectsToStorage = (updatedProjects: ProjectState[]) => {
@@ -106,16 +134,9 @@ export default function App() {
   // --- Handlers ---
 
   const handleAuthSuccess = (userData: User) => {
-    const fullUser = {
-      ...userData,
-      fullName: userData.fullName || 'Ahmed Hassan',
-      credits: 75,
-      plan: 'pro' as const,
-      courseProgress: 25
-    };
-    setUser(fullUser);
+    setUser(userData);
     try {
-      localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(fullUser));
+      localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(userData));
     } catch {}
     setUi(prev => ({ ...prev, view: 'builder' }));
   };
@@ -130,7 +151,7 @@ export default function App() {
   };
 
   const handleCreateProjectFromPrompt = (prompt: string, initialAiConfig?: AIProviderConfig) => {
-    const newProj = generateProjectFromPrompt(prompt, 'developer', ui.language);
+    const newProj = createBlankProject(prompt, user?.id || '');
     if (initialAiConfig) {
       newProj.aiConfig = initialAiConfig;
     }
@@ -165,16 +186,12 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    axios.post('/api/auth/logout').catch(() => {});
     setUser(null);
     setActiveProject(null);
     localStorage.removeItem(STORAGE_USER_KEY);
     localStorage.removeItem(STORAGE_ACTIVE_PROJ_KEY);
     setUi(prev => ({ ...prev, view: 'landing' }));
-  };
-
-  const handleUseTemplate = (template: any) => {
-    const prompt = `Template: ${template.name}. Description: ${template.description}`;
-    handleCreateProjectFromPrompt(prompt);
   };
 
   const handleToggleTheme = () => {
@@ -300,13 +317,6 @@ export default function App() {
             language={ui.language}
             onBack={() => setUi(prev => ({ ...prev, view: 'landing' }))}
             onStartBuilding={() => handleStartBuilding()}
-          />
-        )}
-
-        {ui.view === 'templates' && (
-          <TemplatesPage 
-            language={ui.language}
-            onUseTemplate={handleUseTemplate}
           />
         )}
 

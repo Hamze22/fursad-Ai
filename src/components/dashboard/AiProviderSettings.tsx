@@ -75,6 +75,10 @@ export const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
     error?: string;
   } | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [orModels, setOrModels] = useState<AIModelInfo[]>([]);
+  const [orQuery, setOrQuery] = useState('');
+  const [orLoading, setOrLoading] = useState(false);
+  const [orServerKey, setOrServerKey] = useState(false);
 
   // Fetch available providers from server
   useEffect(() => {
@@ -83,14 +87,40 @@ export const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
         if (res.data?.providers) {
           setProviders(res.data.providers);
         }
+        setOrServerKey(Boolean(res.data?.openrouter?.hasServerKey));
       })
       .catch(err => {
         console.warn('Failed to fetch provider list from server:', err);
       });
   }, []);
 
+  // OpenRouter: load every available model once the provider is selected
+  useEffect(() => {
+    if (config.provider !== 'openrouter' || orModels.length > 0) return;
+    setOrLoading(true);
+    axios.get('/api/ai/openrouter/models')
+      .then(res => {
+        const list: AIModelInfo[] = (res.data?.models || []).map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          provider: 'openrouter' as AIProviderType,
+          description: m.free
+            ? 'Free'
+            : `$${(m.promptPrice * 1e6).toFixed(2)} in / $${(m.completionPrice * 1e6).toFixed(2)} out per 1M tokens`,
+          contextWindow: m.contextLength ? `${Math.round(m.contextLength / 1000)}K tokens` : 'n/a',
+          recommendedFor: 'balanced' as const,
+          requiresByok: true
+        }));
+        setOrModels(list);
+      })
+      .catch(() => {})
+      .finally(() => setOrLoading(false));
+  }, [config.provider]);
+
   const currentProvider = providers.find(p => p.id === config.provider) || providers[0];
-  const availableModels = currentProvider?.models || [];
+  const availableModels: AIModelInfo[] = config.provider === 'openrouter' && orModels.length > 0
+    ? orModels.filter(m => !orQuery.trim() || `${m.id} ${m.name}`.toLowerCase().includes(orQuery.trim().toLowerCase()))
+    : (currentProvider?.models || []);
 
   const handleProviderSelect = (provId: AIProviderType) => {
     const prov = providers.find(p => p.id === provId);
@@ -249,7 +279,28 @@ export const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
           <Zap className="w-3.5 h-3.5 text-amber-400" />
           {isSo ? '2. Dooro Nooca Model-ka (Model Selection)' : '2. Select Model for Code Generation & Edits'}
         </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        <p className="text-[11px] text-emerald-300/80">
+          {isSo
+            ? 'Haddii moodelka aad dooratay uusan shaqayn, Gemini ama OpenRouter (kan kale) ayaa si toos ah loo isticmaalayaa.'
+            : 'If the model you choose does not respond, the other provider (Gemini or OpenRouter) is used automatically.'}
+        </p>
+        {config.provider === 'openrouter' && (
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              value={orQuery}
+              onChange={(e) => setOrQuery(e.target.value)}
+              placeholder={isSo ? 'Raadi model (tusaale: claude, gpt, llama, free)...' : 'Search models (e.g. claude, gpt, llama, free)...'}
+              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+            <p className="text-[11px] text-slate-400">
+              {orLoading
+                ? (isSo ? 'Waxaa la soo rarayaa moodellada OpenRouter...' : 'Loading OpenRouter models...')
+                : `${availableModels.length} / ${orModels.length || 1} models`}
+            </p>
+          </div>
+        )}
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 ${config.provider === 'openrouter' ? 'max-h-[26rem] overflow-y-auto pr-1' : ''}`}>
           {availableModels.map((m) => {
             const isSelected = config.model === m.id;
             return (
@@ -334,6 +385,8 @@ export const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
               ? 'Groq API Key (gsk_...)' 
               : config.provider === 'anthropic'
               ? 'Anthropic API Key (sk-ant-...)'
+              : config.provider === 'openrouter'
+              ? 'OpenRouter API Key (sk-or-v1-...)'
               : config.provider === 'cloudflare'
               ? 'Cloudflare API Token'
               : 'Google Gemini API Key (Optional)'}
@@ -341,7 +394,7 @@ export const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
           <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
-              placeholder={config.provider === 'gemini' ? 'Optional (Built-in active)' : 'Enter API key...'}
+              placeholder={config.provider === 'gemini' ? 'Optional (Built-in active)' : (config.provider === 'openrouter' && orServerKey) ? 'Optional (server key active)' : 'Enter API key...'}
               value={config.apiKey || ''}
               onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
               className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-24 py-2.5 text-xs text-white outline-none focus:border-cyan-500 font-mono"
@@ -374,7 +427,7 @@ export const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleTestConnection}
-              disabled={testing || (config.provider !== 'gemini' && !config.apiKey)}
+              disabled={testing || (config.provider !== 'gemini' && !config.apiKey && !(config.provider === 'openrouter' && orServerKey))}
               className="px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}

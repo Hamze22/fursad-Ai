@@ -344,10 +344,10 @@ export const VercelDeployModal: React.FC<VercelDeployModalProps> = ({
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-emerald-300">
-                        Deployment Live & Ready!
+                        Demo deployment (preview only)
                       </h4>
                       <p className="text-xs text-slate-300">
-                        Your application has been deployed to the Vercel Edge Network.
+                        This is a simulation. No real deployment was created and this link is not live. Export the project and deploy it with Vercel to publish it.
                       </p>
                     </div>
                   </div>

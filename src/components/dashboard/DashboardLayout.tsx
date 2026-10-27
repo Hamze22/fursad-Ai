@@ -38,7 +38,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     { id: 'projects', icon: FolderCode, label: 'My Projects' },
     { id: 'builder', icon: Sparkles, label: 'AI Builder', accent: true },
     { id: 'course', icon: GraduationCap, label: 'Course' },
-    { id: 'templates', icon: Layers, label: 'Templates' },
     { id: 'deployments', icon: Globe, label: 'Deployments' },
     { id: 'billing', icon: CreditCard, label: 'Billing' },
     { id: 'settings', icon: Settings, label: 'Settings' },

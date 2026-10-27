@@ -58,7 +58,7 @@ export const GitHubModal: React.FC<GitHubModalProps> = ({
       id: 'c1',
       hash: 'a7f920e',
       message: 'feat: add Somali book catalog and responsive bookstore motion preview',
-      author: 'Ahmed Hassan (somfxstore)',
+      author: 'You (demo)',
       date: '5 minutes ago',
       branch: 'main',
       filesCount: Object.keys(project.files).length || 8
@@ -96,7 +96,7 @@ export const GitHubModal: React.FC<GitHubModalProps> = ({
         id: `c_${Date.now()}`,
         hash: newHash,
         message: commitMessage.trim(),
-        author: 'Ahmed Hassan (somfxstore)',
+        author: 'You (demo)',
         date: 'Just now',
         branch: selectedBranch,
         filesCount: Object.keys(project.files).length
@@ -311,7 +311,7 @@ export const GitHubModal: React.FC<GitHubModalProps> = ({
                   >
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span>
-                      Successfully pushed commit to <strong>{repoName}</strong> on branch <strong>{selectedBranch}</strong>!
+                      Demo only: nothing was sent to <strong>{repoName}</strong>. Push your exported project with git to publish it for real.
                     </span>
                   </motion.div>
                 )}
